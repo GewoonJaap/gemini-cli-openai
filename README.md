@@ -104,7 +104,7 @@ You need OAuth2 credentials from a Google account that has accessed Gemini. The 
 
 ```bash
 # Create a KV namespace for token caching
-wrangler kv:namespace create "GEMINI_CLI_KV"
+npx wrangler kv namespace create "GEMINI_CLI_KV"
 ```
 
 Note the namespace ID returned.
