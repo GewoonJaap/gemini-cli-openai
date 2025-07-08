@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { Env, ChatCompletionRequest, ChatCompletionResponse } from "../types";
 import { geminiCliModels, DEFAULT_MODEL, getAllModelIds } from "../models";
 import { OPENAI_MODEL_OWNER } from "../config";
-import { DEFAULT_THINKING_BUDGET } from "../constants";
 import { AuthManager } from "../auth";
 import { GeminiApiClient } from "../gemini-client";
 import { createOpenAIStreamTransformer } from "../stream-transformer";
@@ -37,18 +36,7 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 		// OpenAI API compatibility: stream defaults to true unless explicitly set to false
 		const stream = body.stream !== false;
 
-		// Check environment settings for real thinking
-		const isRealThinkingEnabled = c.env.ENABLE_REAL_THINKING === "true";
-		const includeReasoning = isRealThinkingEnabled; // Automatically enable reasoning when real thinking is enabled
-		const thinkingBudget = body.thinking_budget ?? DEFAULT_THINKING_BUDGET; // Default to dynamic allocation
-
-		console.log("Request body parsed:", {
-			model,
-			messageCount: messages.length,
-			stream,
-			includeReasoning,
-			thinkingBudget
-		});
+		console.log("Request body parsed:", { model, messageCount: messages.length, stream });
 
 		if (!messages.length) {
 			return c.json({ error: "messages is a required field" }, 400);
@@ -126,12 +114,10 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 			(async () => {
 				try {
 					console.log("Starting stream generation");
-					const geminiStream = geminiClient.streamContent(model, systemPrompt, otherMessages, {
-						includeReasoning,
-						thinkingBudget
-					});
+					const geminiStream = geminiClient.streamContent(model, systemPrompt, otherMessages);
 
 					for await (const chunk of geminiStream) {
+						console.log("Received chunk:", chunk.type);
 						await writer.write(chunk);
 					}
 					console.log("Stream completed successfully");
@@ -164,10 +150,7 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 			// Non-streaming response
 			try {
 				console.log("Starting non-streaming completion");
-				const completion = await geminiClient.getCompletion(model, systemPrompt, otherMessages, {
-					includeReasoning,
-					thinkingBudget
-				});
+				const completion = await geminiClient.getCompletion(model, systemPrompt, otherMessages);
 
 				const response: ChatCompletionResponse = {
 					id: `chatcmpl-${crypto.randomUUID()}`,
