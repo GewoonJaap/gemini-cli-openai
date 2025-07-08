@@ -1,0 +1,73 @@
+name: Docker Build Test
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  docker-build-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Test Docker build (development)
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false
+        load: true
+        tags: gemini-worker:test-dev
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          NODE_ENV=development
+
+    - name: Test Docker build (production)
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false
+        load: true
+        tags: gemini-worker:test-prod
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          NODE_ENV=production
+
+    - name: Test container startup
+      run: |
+        # Create minimal .dev.vars for testing
+        echo "GCP_SERVICE_ACCOUNT={}" > .dev.vars
+        echo "OPENAI_API_KEY=test-key" >> .dev.vars
+        echo "ENABLE_FAKE_THINKING=true" >> .dev.vars
+        echo "ENABLE_REAL_THINKING=false" >> .dev.vars
+        echo "STREAM_THINKING_AS_CONTENT=false" >> .dev.vars
+        
+        # Test that container starts and health check passes
+        docker run --rm -d \
+          --name gemini-worker-test \
+          -p 8787:8787 \
+          -v $(pwd)/.dev.vars:/app/.dev.vars:ro \
+          gemini-worker:test-dev &
+        
+        # Wait for container to start
+        sleep 10
+        
+        # Test health endpoint
+        curl -f http://localhost:8787/health || exit 1
+        
+        # Test main endpoint returns expected response
+        curl -f http://localhost:8787/ || exit 1
+        
+        # Clean up
+        docker stop gemini-worker-test

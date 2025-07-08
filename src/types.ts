@@ -5,6 +5,8 @@ export interface Env {
 	GEMINI_CLI_KV: KVNamespace; // Cloudflare KV for token caching
 	OPENAI_API_KEY?: string; // Optional API key for authentication
 	ENABLE_FAKE_THINKING?: string; // Optional flag to enable fake thinking output (set to "true" to enable)
+	ENABLE_REAL_THINKING?: string; // Optional flag to enable real Gemini thinking output (set to "true" to enable)
+	STREAM_THINKING_AS_CONTENT?: string; // Optional flag to stream thinking as content with <thinking> tags (set to "true" to enable)
 }
 
 // --- OAuth2 Credentials Interface ---
@@ -34,6 +36,7 @@ export interface ChatCompletionRequest {
 	model: string;
 	messages: ChatMessage[];
 	stream?: boolean;
+	thinking_budget?: number; // Optional thinking token budget
 }
 
 export interface ChatMessage {
@@ -89,6 +92,6 @@ export interface ReasoningData {
 
 // --- Stream Chunk Types ---
 export interface StreamChunk {
-	type: "text" | "usage" | "reasoning";
+	type: "text" | "usage" | "reasoning" | "thinking_content" | "real_thinking";
 	data: string | UsageData | ReasoningData;
 }

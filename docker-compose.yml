@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  gemini-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: development
+    container_name: gemini-cli-worker
+    ports:
+      - "8787:8787"  # Host:Container port mapping
+    volumes:
+      # Mount project directory for hot reloading during development
+      - .:/app
+      # Exclude node_modules to avoid conflicts between host and container
+      - /app/node_modules
+      # Create named volume for persistent storage (KV, R2, etc.)
+      # This ensures data survives container restarts
+      - gemini_storage_data:/app/.mf
+    environment:
+      # Set NODE_ENV for development
+      - NODE_ENV=development
+    # Load environment variables from .dev.vars file (if exists)
+    env_file:
+      - .dev.vars
+    # Restart policy
+    restart: unless-stopped
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8787/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Named volumes for data persistence
+volumes:
+  gemini_storage_data:
+    driver: local

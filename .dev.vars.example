@@ -16,3 +16,13 @@ OPENAI_API_KEY=sk-your-secret-api-key-here
 # When enabled, models marked with thinking: true will generate synthetic reasoning text
 # before providing their actual response, similar to OpenAI's o3 model behavior
 ENABLE_FAKE_THINKING=true
+
+# Optional: Enable real Gemini thinking output (set to "true" to enable)
+# When enabled, requests with include_reasoning=true will use Gemini's native thinking
+# This requires thinking-capable models and provides genuine reasoning from Gemini
+ENABLE_REAL_THINKING=true
+
+# Optional: Stream thinking as content with <thinking> tags (DeepSeek R1 style)
+# When enabled along with either thinking mode, reasoning will be streamed as regular content
+# wrapped in <thinking></thinking> tags instead of using the reasoning field
+STREAM_THINKING_AS_CONTENT=true

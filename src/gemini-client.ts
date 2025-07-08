@@ -1,9 +1,10 @@
 import { Env, StreamChunk, ReasoningData, UsageData, ChatMessage, MessageContent } from "./types";
 import { AuthManager } from "./auth";
 import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "./config";
-import { REASONING_MESSAGES, REASONING_CHUNK_DELAY } from "./constants";
+import { REASONING_MESSAGES, REASONING_CHUNK_DELAY, THINKING_CONTENT_CHUNK_SIZE } from "./constants";
 import { geminiCliModels } from "./models";
 import { validateImageUrl } from "./utils/image-utils";
+import { GenerationConfigValidator } from "./helpers/generation-config-validator";
 
 // Gemini API response types
 interface GeminiCandidate {
@@ -26,6 +27,7 @@ interface GeminiResponse {
 
 interface GeminiPart {
 	text?: string;
+	thought?: boolean; // For real thinking chunks from Gemini
 	inlineData?: {
 		mimeType: string;
 		data: string;
@@ -227,7 +229,15 @@ export class GeminiApiClient {
 	/**
 	 * Stream content from Gemini API.
 	 */
-	async *streamContent(modelId: string, systemPrompt: string, messages: ChatMessage[]): AsyncGenerator<StreamChunk> {
+	async *streamContent(
+		modelId: string,
+		systemPrompt: string,
+		messages: ChatMessage[],
+		options?: {
+			includeReasoning?: boolean;
+			thinkingBudget?: number;
+		}
+	): AsyncGenerator<StreamChunk> {
 		await this.authManager.initializeAuth();
 		const projectId = await this.discoverProjectId();
 
@@ -237,13 +247,26 @@ export class GeminiApiClient {
 			contents.unshift({ role: "user", parts: [{ text: systemPrompt }] });
 		}
 
-		// Check if this is a thinking model and if fake thinking is enabled
+		// Check if this is a thinking model and which thinking mode to use
 		const isThinkingModel = geminiCliModels[modelId]?.thinking || false;
+		const isRealThinkingEnabled = this.env.ENABLE_REAL_THINKING === "true";
 		const isFakeThinkingEnabled = this.env.ENABLE_FAKE_THINKING === "true";
+		const streamThinkingAsContent = this.env.STREAM_THINKING_AS_CONTENT === "true";
+		const includeReasoning = options?.includeReasoning || false;
 
-		// For thinking models, emit reasoning before the actual response (only if fake thinking is enabled)
-		if (isThinkingModel && isFakeThinkingEnabled) {
-			yield* this.generateReasoningOutput(modelId, messages);
+		// Use the validation helper to create a proper generation config
+		const generationConfig = GenerationConfigValidator.createValidatedConfig(
+			modelId,
+			{ thinkingBudget: options?.thinkingBudget },
+			isRealThinkingEnabled,
+			includeReasoning
+		);
+
+		// For thinking models with fake thinking (fallback when real thinking is not enabled or not requested)
+		let needsThinkingClose = false;
+		if (isThinkingModel && isFakeThinkingEnabled && !includeReasoning) {
+			yield* this.generateReasoningOutput(modelId, messages, streamThinkingAsContent);
+			needsThinkingClose = streamThinkingAsContent; // Only need to close if we streamed as content
 		}
 
 		const streamRequest = {
@@ -251,20 +274,26 @@ export class GeminiApiClient {
 			project: projectId,
 			request: {
 				contents: contents,
-				generationConfig: {
-					temperature: 0.7,
-					maxOutputTokens: 8192
-				}
+				generationConfig
 			}
 		};
 
-		yield* this.performStreamRequest(streamRequest);
+		yield* this.performStreamRequest(
+			streamRequest,
+			needsThinkingClose,
+			false,
+			includeReasoning && streamThinkingAsContent
+		);
 	}
 
 	/**
 	 * Generates reasoning output for thinking models.
 	 */
-	private async *generateReasoningOutput(modelId: string, messages: ChatMessage[]): AsyncGenerator<StreamChunk> {
+	private async *generateReasoningOutput(
+		modelId: string,
+		messages: ChatMessage[],
+		streamAsContent: boolean = false
+	): AsyncGenerator<StreamChunk> {
 		// Get the last user message to understand what the model should think about
 		const lastUserMessage = messages.filter((msg) => msg.role === "user").pop();
 		let userContent = "";
@@ -282,25 +311,86 @@ export class GeminiApiClient {
 
 		// Generate reasoning text based on the user's question using constants
 		const requestPreview = userContent.substring(0, 100) + (userContent.length > 100 ? "..." : "");
-		const reasoningTexts = REASONING_MESSAGES.map((msg) => msg.replace("{requestPreview}", requestPreview));
 
-		// Stream the reasoning text in chunks
-		for (const reasoningText of reasoningTexts) {
-			const reasoningData: ReasoningData = { reasoning: reasoningText };
+		if (streamAsContent) {
+			// DeepSeek R1 style: stream thinking as content with <thinking> tags
 			yield {
-				type: "reasoning",
-				data: reasoningData
+				type: "thinking_content",
+				data: "<thinking>\n"
 			};
 
-			// Add a small delay to simulate thinking time
-			await new Promise((resolve) => setTimeout(resolve, REASONING_CHUNK_DELAY));
+			// Add a small delay after opening tag
+			await new Promise((resolve) => setTimeout(resolve, REASONING_CHUNK_DELAY)); // Stream reasoning content in smaller chunks for more realistic streaming
+			const reasoningTexts = REASONING_MESSAGES.map((msg) => msg.replace("{requestPreview}", requestPreview));
+			const fullReasoningText = reasoningTexts.join("");
+
+			// Split into smaller chunks for more realistic streaming
+			// Try to split on word boundaries when possible for better readability
+			const chunks: string[] = [];
+			let remainingText = fullReasoningText;
+
+			while (remainingText.length > 0) {
+				if (remainingText.length <= THINKING_CONTENT_CHUNK_SIZE) {
+					chunks.push(remainingText);
+					break;
+				}
+
+				// Try to find a good break point (space, newline, punctuation)
+				let chunkEnd = THINKING_CONTENT_CHUNK_SIZE;
+				const searchSpace = remainingText.substring(0, chunkEnd + 10); // Look a bit ahead
+				const goodBreaks = [" ", "\n", ".", ",", "!", "?", ";", ":"];
+
+				for (const breakChar of goodBreaks) {
+					const lastBreak = searchSpace.lastIndexOf(breakChar);
+					if (lastBreak > THINKING_CONTENT_CHUNK_SIZE * 0.7) {
+						// Don't make chunks too small
+						chunkEnd = lastBreak + 1;
+						break;
+					}
+				}
+
+				chunks.push(remainingText.substring(0, chunkEnd));
+				remainingText = remainingText.substring(chunkEnd);
+			}
+
+			for (const chunk of chunks) {
+				yield {
+					type: "thinking_content",
+					data: chunk
+				};
+
+				// Add small delay between chunks
+				await new Promise((resolve) => setTimeout(resolve, 50));
+			}
+
+			// Note: We don't close the thinking tag here - it will be closed when real content starts
+		} else {
+			// Original mode: stream as reasoning field
+			const reasoningTexts = REASONING_MESSAGES.map((msg) => msg.replace("{requestPreview}", requestPreview));
+
+			// Stream the reasoning text in chunks
+			for (const reasoningText of reasoningTexts) {
+				const reasoningData: ReasoningData = { reasoning: reasoningText };
+				yield {
+					type: "reasoning",
+					data: reasoningData
+				};
+
+				// Add a small delay to simulate thinking time
+				await new Promise((resolve) => setTimeout(resolve, REASONING_CHUNK_DELAY));
+			}
 		}
 	}
 
 	/**
 	 * Performs the actual stream request with retry logic for 401 errors.
 	 */
-	private async *performStreamRequest(streamRequest: unknown, isRetry: boolean = false): AsyncGenerator<StreamChunk> {
+	private async *performStreamRequest(
+		streamRequest: unknown,
+		needsThinkingClose: boolean = false,
+		isRetry: boolean = false,
+		realThinkingAsContent: boolean = false
+	): AsyncGenerator<StreamChunk> {
 		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
 			method: "POST",
 			headers: {
@@ -315,7 +405,7 @@ export class GeminiApiClient {
 				console.log("Got 401 error in stream request, clearing token cache and retrying...");
 				await this.authManager.clearTokenCache();
 				await this.authManager.initializeAuth();
-				yield* this.performStreamRequest(streamRequest, true); // Retry once
+				yield* this.performStreamRequest(streamRequest, needsThinkingClose, true, realThinkingAsContent); // Retry once
 				return;
 			}
 			const errorText = await response.text();
@@ -327,11 +417,104 @@ export class GeminiApiClient {
 			throw new Error("Response has no body");
 		}
 
+		let hasClosedThinking = false;
+		let hasStartedThinking = false;
+
 		for await (const jsonData of this.parseSSEStream(response.body)) {
 			const candidate = jsonData.response?.candidates?.[0];
-			if (candidate?.content?.parts?.[0]?.text) {
-				const content = candidate.content.parts[0].text;
-				yield { type: "text", data: content };
+
+			if (candidate?.content?.parts) {
+				for (const part of candidate.content.parts as GeminiPart[]) {
+					// Handle real thinking content from Gemini
+					if (part.thought === true && part.text) {
+						const thinkingText = part.text;
+
+						if (realThinkingAsContent) {
+							// Stream as content with <thinking> tags (DeepSeek R1 style)
+							if (!hasStartedThinking) {
+								yield {
+									type: "thinking_content",
+									data: "<thinking>\n"
+								};
+								hasStartedThinking = true;
+							}
+
+							yield {
+								type: "thinking_content",
+								data: thinkingText
+							};
+						} else {
+							// Stream as separate reasoning field
+							yield {
+								type: "real_thinking",
+								data: thinkingText
+							};
+						}
+					}
+					// Check if text content contains <think> tags (based on your original example)
+					else if (part.text && part.text.includes("<think>")) {
+						if (realThinkingAsContent) {
+							// Extract thinking content and convert to our format
+							const thinkingMatch = part.text.match(/<think>(.*?)<\/think>/s);
+							if (thinkingMatch) {
+								if (!hasStartedThinking) {
+									yield {
+										type: "thinking_content",
+										data: "<thinking>\n"
+									};
+									hasStartedThinking = true;
+								}
+
+								yield {
+									type: "thinking_content",
+									data: thinkingMatch[1]
+								};
+							}
+
+							// Extract any non-thinking coRecentent
+							const nonThinkingContent = part.text.replace(/<think>.*?<\/think>/gs, "").trim();
+							if (nonThinkingContent) {
+								if (hasStartedThinking && !hasClosedThinking) {
+									yield {
+										type: "thinking_content",
+										data: "\n</thinking>\n\n"
+									};
+									hasClosedThinking = true;
+								}
+								yield { type: "text", data: nonThinkingContent };
+							}
+						} else {
+							// Stream thinking as separate reasoning field
+							const thinkingMatch = part.text.match(/<think>(.*?)<\/think>/s);
+							if (thinkingMatch) {
+								yield {
+									type: "real_thinking",
+									data: thinkingMatch[1]
+								};
+							}
+
+							// Stream non-thinking content as regular text
+							const nonThinkingContent = part.text.replace(/<think>.*?<\/think>/gs, "").trim();
+							if (nonThinkingContent) {
+								yield { type: "text", data: nonThinkingContent };
+							}
+						}
+					}
+					// Handle regular content - only if it's not a thinking part and doesn't contain <think> tags
+					else if (part.text && !part.thought && !part.text.includes("<think>")) {
+						// Close thinking tag before first real content if needed
+						if ((needsThinkingClose || (realThinkingAsContent && hasStartedThinking)) && !hasClosedThinking) {
+							yield {
+								type: "thinking_content",
+								data: "\n</thinking>\n\n"
+							};
+							hasClosedThinking = true;
+						}
+
+						yield { type: "text", data: part.text };
+					}
+					// Note: Skipping unknown part structures
+				}
 			}
 
 			if (jsonData.response?.usageMetadata) {
@@ -354,13 +537,17 @@ export class GeminiApiClient {
 	async getCompletion(
 		modelId: string,
 		systemPrompt: string,
-		messages: ChatMessage[]
+		messages: ChatMessage[],
+		options?: {
+			includeReasoning?: boolean;
+			thinkingBudget?: number;
+		}
 	): Promise<{ content: string; usage?: UsageData }> {
 		let content = "";
 		let usage: UsageData | undefined;
 
 		// Collect all chunks from the stream
-		for await (const chunk of this.streamContent(modelId, systemPrompt, messages)) {
+		for await (const chunk of this.streamContent(modelId, systemPrompt, messages, options)) {
 			if (chunk.type === "text" && typeof chunk.data === "string") {
 				content += chunk.data;
 			} else if (chunk.type === "usage" && typeof chunk.data === "object") {
