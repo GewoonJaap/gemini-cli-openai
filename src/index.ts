@@ -34,7 +34,8 @@ app.use("*", async (c, next) => {
 
 	// Handle preflight requests
 	if (c.req.method === "OPTIONS") {
-		return new Response(null, { status: 204 });
+		c.status(204);
+		return c.body(null);
 	}
 
 	await next();
