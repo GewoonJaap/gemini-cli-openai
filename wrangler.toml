@@ -10,7 +10,8 @@ kv_namespaces = [
 ]
 
 # --- Environment Variables ---
-# [vars]
+# 
+[vars]
 #
 # # REQUIRED: Your oauth_creds.json file content as a single-line string.
 # # Get this file by authenticating with the Gemini CLI (`gemini auth`).

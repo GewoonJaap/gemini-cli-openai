@@ -1,4 +1,5 @@
 import { Env, StreamChunk, ReasoningData, UsageData, ChatMessage, MessageContent } from "./types";
+import { logErrorToKV } from "./utils/log-utils";
 import { AuthManager } from "./auth";
 import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "./config";
 import { REASONING_MESSAGES, REASONING_CHUNK_DELAY, THINKING_CONTENT_CHUNK_SIZE } from "./constants";
@@ -98,6 +99,7 @@ export class GeminiApiClient {
 		} catch (error: unknown) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			console.error("Failed to discover project ID:", errorMessage);
+			await logErrorToKV(this.env, error, "discoverProjectId");
 			throw new Error(
 				"Could not discover project ID. Make sure you're authenticated and consider setting GEMINI_PROJECT_ID."
 			);
@@ -120,6 +122,7 @@ export class GeminiApiClient {
 						yield JSON.parse(objectBuffer);
 					} catch (e) {
 						console.error("Error parsing final SSE JSON object:", e);
+						await logErrorToKV(this.env, e, "parseSSEStream - final JSON");
 					}
 				}
 				break;
@@ -136,6 +139,7 @@ export class GeminiApiClient {
 							yield JSON.parse(objectBuffer);
 						} catch (e) {
 							console.error("Error parsing SSE JSON object:", e);
+							await logErrorToKV(this.env, e, "parseSSEStream - JSON object");
 						}
 						objectBuffer = "";
 					}
@@ -410,6 +414,7 @@ export class GeminiApiClient {
 			}
 			const errorText = await response.text();
 			console.error(`[GeminiAPI] Stream request failed: ${response.status}`, errorText);
+			await logErrorToKV(this.env, new Error(`Stream request failed: ${response.status} - ${errorText}`), "performStreamRequest");
 			throw new Error(`Stream request failed: ${response.status}`);
 		}
 

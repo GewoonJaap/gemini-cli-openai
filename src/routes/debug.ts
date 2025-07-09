@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { Env } from "../types";
 import { AuthManager } from "../auth";
 import { GeminiApiClient } from "../gemini-client";
+import { logErrorToKV } from "../utils/log-utils";
 
 /**
  * Debug and testing routes for troubleshooting authentication and API functionality.
@@ -29,6 +30,7 @@ DebugRoute.get("/cache", async (c) => {
 		return c.json(sanitizedInfo);
 	} catch (e: unknown) {
 		const errorMessage = e instanceof Error ? e.message : String(e);
+		logErrorToKV(c.env, e, "debug/cache");
 		return c.json(
 			{
 				status: "error",
@@ -56,6 +58,7 @@ DebugRoute.post("/token-test", async (c) => {
 	} catch (e: unknown) {
 		const errorMessage = e instanceof Error ? e.message : String(e);
 		console.error("Token test error:", e);
+		logErrorToKV(c.env, e, "debug/token-test");
 		return c.json(
 			{
 				status: "error",
@@ -91,6 +94,7 @@ DebugRoute.post("/test", async (c) => {
 	} catch (e: unknown) {
 		const errorMessage = e instanceof Error ? e.message : String(e);
 		console.error("Test endpoint error:", e);
+		logErrorToKV(c.env, e, "debug/test");
 		return c.json(
 			{
 				status: "error",

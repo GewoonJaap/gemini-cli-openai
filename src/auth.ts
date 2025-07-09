@@ -1,4 +1,5 @@
 import { Env, OAuth2Credentials } from "./types";
+import { logErrorToKV } from "./utils/log-utils";
 import {
 	CODE_ASSIST_ENDPOINT,
 	CODE_ASSIST_API_VERSION,
@@ -97,6 +98,7 @@ export class AuthManager {
 		} catch (e: unknown) {
 			const errorMessage = e instanceof Error ? e.message : String(e);
 			console.error("Failed to initialize authentication:", e);
+			logErrorToKV(this.env, e, "initializeAuth");
 			throw new Error("Authentication failed: " + errorMessage);
 		}
 	}
@@ -123,6 +125,7 @@ export class AuthManager {
 		if (!refreshResponse.ok) {
 			const errorText = await refreshResponse.text();
 			console.error("Token refresh failed:", errorText);
+			logErrorToKV(this.env, new Error(`Token refresh failed: ${errorText}`), "refreshAndCacheToken");
 			throw new Error(`Token refresh failed: ${errorText}`);
 		}
 
@@ -163,6 +166,7 @@ export class AuthManager {
 			}
 		} catch (kvError) {
 			console.error("Failed to cache token in KV storage:", kvError);
+			logErrorToKV(this.env, kvError, "cacheTokenInKV");
 			// Don't throw an error here as the token is still valid, just not cached
 		}
 	}

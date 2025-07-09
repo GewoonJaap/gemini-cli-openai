@@ -6,6 +6,7 @@ import { DEFAULT_THINKING_BUDGET } from "../constants";
 import { AuthManager } from "../auth";
 import { GeminiApiClient } from "../gemini-client";
 import { createOpenAIStreamTransformer } from "../stream-transformer";
+import { logErrorToKV } from "../utils/log-utils";
 
 /**
  * OpenAI-compatible API routes for models and chat completions.
@@ -112,6 +113,7 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 		} catch (authError: unknown) {
 			const errorMessage = authError instanceof Error ? authError.message : String(authError);
 			console.error("Authentication failed:", errorMessage);
+			logErrorToKV(c.env, authError, "chat/completions - authentication");
 			return c.json({ error: "Authentication failed: " + errorMessage }, 401);
 		}
 
@@ -139,6 +141,7 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 				} catch (streamError: unknown) {
 					const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
 					console.error("Stream error:", errorMessage);
+					logErrorToKV(c.env, streamError, "chat/completions - stream");
 					// Try to write an error chunk before closing
 					await writer.write({
 						type: "text",
@@ -200,12 +203,14 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 			} catch (completionError: unknown) {
 				const errorMessage = completionError instanceof Error ? completionError.message : String(completionError);
 				console.error("Completion error:", errorMessage);
+				logErrorToKV(c.env, completionError, "chat/completions - non-streaming");
 				return c.json({ error: errorMessage }, 500);
 			}
 		}
 	} catch (e: unknown) {
 		const errorMessage = e instanceof Error ? e.message : String(e);
 		console.error("Top-level error:", e);
+		logErrorToKV(c.env, e, "chat/completions - top-level");
 		return c.json({ error: errorMessage }, 500);
 	}
 });
