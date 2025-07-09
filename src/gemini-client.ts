@@ -414,7 +414,11 @@ export class GeminiApiClient {
 			}
 			const errorText = await response.text();
 			console.error(`[GeminiAPI] Stream request failed: ${response.status}`, errorText);
-			await logErrorToKV(this.env, new Error(`Stream request failed: ${response.status} - ${errorText}`), "performStreamRequest");
+			await logErrorToKV(
+				this.env,
+				new Error(`Stream request failed: ${response.status} - ${errorText}`),
+				"performStreamRequest"
+			);
 			throw new Error(`Stream request failed: ${response.status}`);
 		}
 

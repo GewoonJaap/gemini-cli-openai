@@ -36,7 +36,9 @@ export const loggingMiddleware = async (c: Context<{ Bindings: Env }>, next: Nex
 	const logEntry = `[${timestamp}] ${method} ${path}${bodyLog} - Request started`;
 	console.log(logEntry);
 	if (c.env.GEMINI_CLI_KV) {
-		c.env.GEMINI_CLI_KV.put(`log-${timestamp}-${crypto.randomUUID()}`, logEntry).catch(err => console.error("Failed to write log to KV:", err));
+		c.env.GEMINI_CLI_KV.put(`log-${timestamp}-${crypto.randomUUID()}`, logEntry).catch((err) =>
+			console.error("Failed to write log to KV:", err)
+		);
 	}
 
 	await next();
@@ -48,6 +50,8 @@ export const loggingMiddleware = async (c: Context<{ Bindings: Env }>, next: Nex
 	const completionLogEntry = `[${endTimestamp}] ${method} ${path} - Completed with status ${status} (${duration}ms)`;
 	console.log(completionLogEntry);
 	if (c.env.GEMINI_CLI_KV) {
-		c.env.GEMINI_CLI_KV.put(`log-${endTimestamp}-${crypto.randomUUID()}`, completionLogEntry).catch(err => console.error("Failed to write log to KV:", err));
+		c.env.GEMINI_CLI_KV.put(`log-${endTimestamp}-${crypto.randomUUID()}`, completionLogEntry).catch((err) =>
+			console.error("Failed to write log to KV:", err)
+		);
 	}
 };
