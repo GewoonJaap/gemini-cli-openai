@@ -18,3 +18,9 @@ export const REASONING_CHUNK_DELAY = 100;
 // This controls how many characters are sent per chunk when streaming thinking content
 // Smaller values create smoother streaming but more network requests
 export const THINKING_CONTENT_CHUNK_SIZE = 15;
+
+// Default thinking budget for thinking models
+export const DEFAULT_THINKING_BUDGET = -1;
+
+// Default temperature for generation
+export const DEFAULT_TEMPERATURE = 0.7;

@@ -385,6 +385,19 @@ export class GeminiApiClient {
 				yield* this.performStreamRequest(streamRequest, needsThinkingClose, true); // Retry once
 				return;
 			}
+			
+			// Handle rate limiting (429) - rotate to next account
+			if (response.status === 429 && !isRetry) {
+				console.log("Got 429 rate limit error in stream request, rotating to next account...");
+				
+				// Handle rate limit and rotate to next account
+				await this.authManager.handleRateLimit();
+				
+				// Retry with new account
+				yield* this.performStreamRequest(streamRequest, needsThinkingClose, true);
+				return;
+			}
+			
 			const errorText = await response.text();
 			console.error(`[GeminiAPI] Stream request failed: ${response.status}`, errorText);
 			throw new Error(`Stream request failed: ${response.status}`);
