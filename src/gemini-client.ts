@@ -140,7 +140,7 @@ export class GeminiApiClient {
 				if (line.trim() === "") {
 					if (objectBuffer) {
 						try {
-                            yield JSON.parse(objectBuffer);
+							yield JSON.parse(objectBuffer);
 						} catch (e) {
 							console.error("Error parsing SSE JSON object:", e);
 						}
@@ -279,9 +279,9 @@ export class GeminiApiClient {
 					{
 						name: tool.function.name,
 						description: tool.function.description,
-						parameters: parameters,
-					},
-				],
+						parameters: parameters
+					}
+				]
 			};
 		});
 	}
@@ -482,8 +482,7 @@ export class GeminiApiClient {
 		realThinkingAsContent: boolean = false,
 		originalModel?: string
 	): AsyncGenerator<StreamChunk> {
-
-    const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
+		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -537,9 +536,9 @@ export class GeminiApiClient {
 			throw new Error(`Stream request failed: ${response.status}`);
 		}
 
-		    if (!response.body) {
-      throw new Error("Response has no body");
-    }
+		if (!response.body) {
+			throw new Error("Response has no body");
+		}
 
 		let hasClosedThinking = false;
 		let hasStartedThinking = false;
@@ -632,10 +631,10 @@ export class GeminiApiClient {
 						// Close thinking tag before first real content if needed
 						if ((needsThinkingClose || (realThinkingAsContent && hasStartedThinking)) && !hasClosedThinking) {
 							yield {
-									type: "thinking_content",
-									data: "\n<\/thinking>\n\n"
-								};
-								hasClosedThinking = true;
+								type: "thinking_content",
+								data: "\n<\/thinking>\n\n"
+							};
+							hasClosedThinking = true;
 						}
 
 						yield { type: "text", data: part.text };

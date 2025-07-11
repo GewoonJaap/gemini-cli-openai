@@ -108,8 +108,8 @@ export interface ChatCompletionUsage {
 
 // --- Gemini Specific Types ---
 export interface GeminiFunctionCall {
-    name: string;
-    args: object;
+	name: string;
+	args: object;
 }
 
 // --- Usage and Reasoning Data Types ---

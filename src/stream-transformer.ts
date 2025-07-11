@@ -82,9 +82,11 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 						}
 					]
 				};
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}
+				controller.enqueue(
+					encoder.encode(`data: ${JSON.stringify(openAIChunk)}
 
-`));
+`)
+				);
 			} else if (chunk.type === "thinking_content" && chunk.data && typeof chunk.data === "string") {
 				// Handle thinking content streamed as regular content (DeepSeek R1 style)
 				const delta: OpenAIDelta = {
@@ -113,9 +115,11 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 					],
 					usage: null
 				};
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}
+				controller.enqueue(
+					encoder.encode(`data: ${JSON.stringify(openAIChunk)}
 
-`));
+`)
+				);
 			} else if (chunk.type === "real_thinking" && chunk.data && typeof chunk.data === "string") {
 				// Handle real thinking content from Gemini
 				const delta: OpenAIDelta = {
@@ -140,9 +144,11 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 					],
 					usage: null
 				};
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}
+				controller.enqueue(
+					encoder.encode(`data: ${JSON.stringify(openAIChunk)}
 
-`));
+`)
+				);
 			} else if (chunk.type === "reasoning" && isReasoningData(chunk.data)) {
 				// Handle thinking/reasoning chunks (original format)
 				const delta: OpenAIDelta = {
@@ -167,9 +173,11 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 					],
 					usage: null
 				};
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}
+				controller.enqueue(
+					encoder.encode(`data: ${JSON.stringify(openAIChunk)}
 
-`));
+`)
+				);
 			} else if (chunk.type === "tool_code" && typeof chunk.data === "object") {
 				const toolData = chunk.data as { name: string; args: object };
 				const toolCode = toolData.args;
@@ -212,9 +220,11 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 						}
 					]
 				};
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}
+				controller.enqueue(
+					encoder.encode(`data: ${JSON.stringify(openAIChunk)}
 
-`));
+`)
+				);
 			}
 			// Note: Usage chunks are intentionally not forwarded in streaming responses
 			// as OpenAI's streaming format doesn't include usage data in individual chunks.
