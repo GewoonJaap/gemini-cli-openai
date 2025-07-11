@@ -38,11 +38,26 @@ export interface ChatCompletionRequest {
 	messages: ChatMessage[];
 	stream?: boolean;
 	thinking_budget?: number; // Optional thinking token budget
+	tools?: Tool[];
+	tool_choice?: ToolChoice;
 }
+
+export interface Tool {
+	type: "function";
+	function: {
+		name: string;
+		description?: string;
+		parameters?: object;
+	};
+}
+
+export type ToolChoice = "none" | "auto" | { type: "function"; function: { name: string } };
 
 export interface ChatMessage {
 	role: string;
 	content: string | MessageContent[];
+	tool_calls?: ToolCall[];
+	tool_call_id?: string;
 }
 
 export interface MessageContent {
@@ -67,18 +82,34 @@ export interface ChatCompletionResponse {
 export interface ChatCompletionChoice {
 	index: number;
 	message: ChatCompletionMessage;
-	finish_reason: "stop" | "length" | "function_call" | "content_filter" | null;
+	finish_reason: "stop" | "length" | "tool_calls" | "content_filter" | null;
 }
 
 export interface ChatCompletionMessage {
 	role: "assistant";
-	content: string;
+	content: string | null;
+	tool_calls?: ToolCall[];
+}
+
+export interface ToolCall {
+	id: string;
+	type: "function";
+	function: {
+		name: string;
+		arguments: string;
+	};
 }
 
 export interface ChatCompletionUsage {
 	prompt_tokens: number;
 	completion_tokens: number;
 	total_tokens: number;
+}
+
+// --- Gemini Specific Types ---
+export interface GeminiFunctionCall {
+    name: string;
+    args: object;
 }
 
 // --- Usage and Reasoning Data Types ---
@@ -89,10 +120,11 @@ export interface UsageData {
 
 export interface ReasoningData {
 	reasoning: string;
+	toolCode?: string;
 }
 
 // --- Stream Chunk Types ---
 export interface StreamChunk {
-	type: "text" | "usage" | "reasoning" | "thinking_content" | "real_thinking";
-	data: string | UsageData | ReasoningData;
+	type: "text" | "usage" | "reasoning" | "thinking_content" | "real_thinking" | "tool_code";
+	data: string | UsageData | ReasoningData | GeminiFunctionCall;
 }

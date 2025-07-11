@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { Env, ChatCompletionRequest, ChatCompletionResponse } from "../types";
+import { Env, ChatCompletionRequest, ChatCompletionResponse, Tool, ToolChoice } from "../types";
 import { geminiCliModels, DEFAULT_MODEL, getAllModelIds } from "../models";
 import { OPENAI_MODEL_OWNER } from "../config";
 import { DEFAULT_THINKING_BUDGET } from "../constants";
@@ -42,12 +42,17 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 		const includeReasoning = isRealThinkingEnabled; // Automatically enable reasoning when real thinking is enabled
 		const thinkingBudget = body.thinking_budget ?? DEFAULT_THINKING_BUDGET; // Default to dynamic allocation
 
+		const tools = body.tools;
+		const tool_choice = body.tool_choice;
+
 		console.log("Request body parsed:", {
 			model,
 			messageCount: messages.length,
 			stream,
 			includeReasoning,
-			thinkingBudget
+			thinkingBudget,
+			tools,
+			tool_choice
 		});
 
 		if (!messages.length) {
@@ -128,7 +133,9 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 					console.log("Starting stream generation");
 					const geminiStream = geminiClient.streamContent(model, systemPrompt, otherMessages, {
 						includeReasoning,
-						thinkingBudget
+						thinkingBudget,
+						tools,
+						tool_choice
 					});
 
 					for await (const chunk of geminiStream) {
@@ -166,7 +173,9 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 				console.log("Starting non-streaming completion");
 				const completion = await geminiClient.getCompletion(model, systemPrompt, otherMessages, {
 					includeReasoning,
-					thinkingBudget
+					thinkingBudget,
+					tools,
+					tool_choice
 				});
 
 				const response: ChatCompletionResponse = {
@@ -179,9 +188,10 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 							index: 0,
 							message: {
 								role: "assistant",
-								content: completion.content
+								content: completion.content,
+								tool_calls: completion.tool_calls
 							},
-							finish_reason: "stop"
+							finish_reason: completion.tool_calls ? "tool_calls" : "stop"
 						}
 					]
 				};

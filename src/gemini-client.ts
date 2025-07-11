@@ -1,4 +1,4 @@
-import { Env, StreamChunk, ReasoningData, UsageData, ChatMessage, MessageContent } from "./types";
+import { Env, StreamChunk, ReasoningData, UsageData, ChatMessage, MessageContent, Tool, ToolChoice } from "./types";
 import { AuthManager } from "./auth";
 import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "./config";
 import { REASONING_MESSAGES, REASONING_CHUNK_DELAY, THINKING_CONTENT_CHUNK_SIZE } from "./constants";
@@ -10,7 +10,7 @@ import { AutoModelSwitchingHelper } from "./helpers/auto-model-switching";
 // Gemini API response types
 interface GeminiCandidate {
 	content?: {
-		parts?: Array<{ text?: string }>;
+		parts?: Array<{ text?: string; functionCall?: { name: string; args: object } }>;
 	};
 }
 
@@ -36,6 +36,10 @@ interface GeminiPart {
 	fileData?: {
 		mimeType: string;
 		fileUri: string;
+	};
+	functionCall?: {
+		name: string;
+		args: object;
 	};
 }
 
@@ -136,7 +140,7 @@ export class GeminiApiClient {
 				if (line.trim() === "") {
 					if (objectBuffer) {
 						try {
-							yield JSON.parse(objectBuffer);
+                            yield JSON.parse(objectBuffer);
 						} catch (e) {
 							console.error("Error parsing SSE JSON object:", e);
 						}
@@ -152,66 +156,134 @@ export class GeminiApiClient {
 	/**
 	 * Converts a message to Gemini format, handling both text and image content.
 	 */
-	private messageToGeminiFormat(msg: ChatMessage): GeminiFormattedMessage {
+	private messageToGeminiFormat(msg: ChatMessage, index: number, allMessages: ChatMessage[]): GeminiFormattedMessage {
 		const role = msg.role === "assistant" ? "model" : "user";
 
-		if (typeof msg.content === "string") {
-			// Simple text message
-			return {
-				role,
-				parts: [{ text: msg.content }]
-			};
-		}
-
-		if (Array.isArray(msg.content)) {
-			// Multimodal message with text and/or images
-			const parts: GeminiPart[] = [];
-
-			for (const content of msg.content) {
-				if (content.type === "text") {
-					parts.push({ text: content.text });
-				} else if (content.type === "image_url" && content.image_url) {
-					const imageUrl = content.image_url.url;
-
-					// Validate image URL
-					const validation = validateImageUrl(imageUrl);
-					if (!validation.isValid) {
-						throw new Error(`Invalid image: ${validation.error}`);
-					}
-
-					if (imageUrl.startsWith("data:")) {
-						// Handle base64 encoded images
-						const [mimeType, base64Data] = imageUrl.split(",");
-						const mediaType = mimeType.split(":")[1].split(";")[0];
-
-						parts.push({
-							inlineData: {
-								mimeType: mediaType,
-								data: base64Data
-							}
-						});
-					} else {
-						// Handle URL images
-						// Note: For better reliability, you might want to fetch the image
-						// and convert it to base64, as Gemini API might have limitations with external URLs
-						parts.push({
-							fileData: {
-								mimeType: validation.mimeType || "image/jpeg",
-								fileUri: imageUrl
-							}
-						});
+		// Handle tool responses first, as they are a special case
+		if (msg.role === "tool") {
+			let functionName = "";
+			// Search backwards from the current message to find the corresponding tool call
+			for (let i = index - 1; i >= 0; i--) {
+				const prevMsg = allMessages[i];
+				if (prevMsg.role === "assistant" && prevMsg.tool_calls) {
+					const toolCall = prevMsg.tool_calls.find((tc) => tc.id === msg.tool_call_id);
+					if (toolCall) {
+						functionName = toolCall.function.name;
+						break; // Found it
 					}
 				}
 			}
 
-			return { role, parts };
+			if (!functionName) {
+				// This is a critical error, the Gemini payload will be invalid.
+				throw new Error(`Could not find a matching function name for tool_call_id: ${msg.tool_call_id}`);
+			}
+
+			return {
+				role: "user", // Gemini uses the user role for tool responses
+				parts: [
+					{
+						functionResponse: {
+							name: functionName,
+							response: { content: msg.content }
+						}
+					}
+				]
+			};
 		}
 
-		// Fallback for unexpected content format
-		return {
-			role,
-			parts: [{ text: String(msg.content) }]
-		};
+		// For user and assistant messages, collect all parts
+		const parts: GeminiPart[] = [];
+
+		// Handle content (string, array of text/images)
+		if (msg.content) {
+			if (typeof msg.content === "string") {
+				// Add text part, but only if it's not empty or if there are no tool calls.
+				// An assistant message with only tool calls might have `content: ""` or `content: null`.
+				// We don't want to add an empty text part in that case.
+				if (msg.content.length > 0 || !msg.tool_calls) {
+					parts.push({ text: msg.content });
+				}
+			} else if (Array.isArray(msg.content)) {
+				// Multimodal message
+				for (const content of msg.content) {
+					if (content.type === "text") {
+						parts.push({ text: content.text });
+					} else if (content.type === "image_url" && content.image_url) {
+						const imageUrl = content.image_url.url;
+						const validation = validateImageUrl(imageUrl);
+						if (!validation.isValid) {
+							throw new Error(`Invalid image: ${validation.error}`);
+						}
+
+						if (imageUrl.startsWith("data:")) {
+							const [mimeType, base64Data] = imageUrl.split(",");
+							const mediaType = mimeType.split(":")[1].split(";")[0];
+							parts.push({
+								inlineData: {
+									mimeType: mediaType,
+									data: base64Data
+								}
+							});
+						} else {
+							// Handle URL images
+							// Note: For better reliability, you might want to fetch the image
+							// and convert it to base64, as the Gemini API might have
+							// limitations with direct, external URLs.
+							parts.push({
+								fileData: {
+									mimeType: validation.mimeType || "image/jpeg",
+									fileUri: imageUrl
+								}
+							});
+						}
+					}
+				}
+			}
+		}
+
+		// Handle tool calls
+		if (msg.tool_calls) {
+			const toolCallParts = msg.tool_calls.map((tool_call) => ({
+				functionCall: {
+					name: tool_call.function.name,
+					args: JSON.parse(tool_call.function.arguments)
+				}
+			}));
+			parts.push(...toolCallParts);
+		}
+
+		// Ensure there's at least one part, as required by the Gemini API.
+		if (parts.length === 0) {
+			// This can happen for messages with null/empty content and no tool calls.
+			// Sending an empty text part is a safe fallback.
+			parts.push({ text: "" });
+		}
+
+		return { role, parts };
+	}
+
+	/**
+	 * Converts OpenAI tools to Gemini format.
+	 */
+	private toolToGeminiFormat(tools: Tool[]): object[] {
+		return tools.map((tool) => {
+			const parameters = tool.function.parameters ? { ...(tool.function.parameters as object) } : undefined;
+
+			if (parameters) {
+				delete (parameters as any)["$schema"];
+			}
+
+			return {
+				functionDeclarations: [
+					{
+						name: tool.function.name,
+						description: tool.function.description,
+						parameters: parameters,
+					},
+				],
+			};
+		});
 	}
 
 	/**
@@ -236,15 +308,17 @@ export class GeminiApiClient {
 		modelId: string,
 		systemPrompt: string,
 		messages: ChatMessage[],
-		options?: {
+		opts?: {
 			includeReasoning?: boolean;
 			thinkingBudget?: number;
+			tools?: Tool[];
+			tool_choice?: ToolChoice;
 		}
 	): AsyncGenerator<StreamChunk> {
 		await this.authManager.initializeAuth();
 		const projectId = await this.discoverProjectId();
 
-		const contents = messages.map((msg) => this.messageToGeminiFormat(msg));
+		const contents = messages.map((msg, i) => this.messageToGeminiFormat(msg, i, messages));
 
 		if (systemPrompt) {
 			contents.unshift({ role: "user", parts: [{ text: systemPrompt }] });
@@ -255,12 +329,12 @@ export class GeminiApiClient {
 		const isRealThinkingEnabled = this.env.ENABLE_REAL_THINKING === "true";
 		const isFakeThinkingEnabled = this.env.ENABLE_FAKE_THINKING === "true";
 		const streamThinkingAsContent = this.env.STREAM_THINKING_AS_CONTENT === "true";
-		const includeReasoning = options?.includeReasoning || false;
+		const includeReasoning = opts?.includeReasoning || false;
 
 		// Use the validation helper to create a proper generation config
 		const generationConfig = GenerationConfigValidator.createValidatedConfig(
 			modelId,
-			{ thinkingBudget: options?.thinkingBudget },
+			{ thinkingBudget: opts?.thinkingBudget },
 			isRealThinkingEnabled,
 			includeReasoning
 		);
@@ -272,7 +346,7 @@ export class GeminiApiClient {
 			needsThinkingClose = streamThinkingAsContent; // Only need to close if we streamed as content
 		}
 
-		const streamRequest = {
+		const streamRequest: any = {
 			model: modelId,
 			project: projectId,
 			request: {
@@ -280,6 +354,18 @@ export class GeminiApiClient {
 				generationConfig
 			}
 		};
+
+		if (opts?.tools) {
+			streamRequest.request.tools = this.toolToGeminiFormat(opts.tools);
+		}
+
+		if (opts?.tool_choice) {
+			streamRequest.request.toolConfig = {
+				functionCallingConfig: {
+					mode: opts.tool_choice === "auto" ? "AUTO" : "ANY"
+				}
+			};
+		}
 
 		yield* this.performStreamRequest(
 			streamRequest,
@@ -396,7 +482,8 @@ export class GeminiApiClient {
 		realThinkingAsContent: boolean = false,
 		originalModel?: string
 	): AsyncGenerator<StreamChunk> {
-		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
+
+    const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -450,9 +537,9 @@ export class GeminiApiClient {
 			throw new Error(`Stream request failed: ${response.status}`);
 		}
 
-		if (!response.body) {
-			throw new Error("Response has no body");
-		}
+		    if (!response.body) {
+      throw new Error("Response has no body");
+    }
 
 		let hasClosedThinking = false;
 		let hasStartedThinking = false;
@@ -462,6 +549,9 @@ export class GeminiApiClient {
 
 			if (candidate?.content?.parts) {
 				for (const part of candidate.content.parts as GeminiPart[]) {
+					if (part.functionCall) {
+						yield { type: "tool_code", data: part.functionCall };
+					}
 					// Handle real thinking content from Gemini
 					if (part.thought === true && part.text) {
 						const thinkingText = part.text;
@@ -514,7 +604,7 @@ export class GeminiApiClient {
 								if (hasStartedThinking && !hasClosedThinking) {
 									yield {
 										type: "thinking_content",
-										data: "\n</thinking>\n\n"
+										data: "\n<\/thinking>\n\n"
 									};
 									hasClosedThinking = true;
 								}
@@ -542,10 +632,10 @@ export class GeminiApiClient {
 						// Close thinking tag before first real content if needed
 						if ((needsThinkingClose || (realThinkingAsContent && hasStartedThinking)) && !hasClosedThinking) {
 							yield {
-								type: "thinking_content",
-								data: "\n</thinking>\n\n"
-							};
-							hasClosedThinking = true;
+									type: "thinking_content",
+									data: "\n<\/thinking>\n\n"
+								};
+								hasClosedThinking = true;
 						}
 
 						yield { type: "text", data: part.text };
@@ -575,26 +665,43 @@ export class GeminiApiClient {
 		modelId: string,
 		systemPrompt: string,
 		messages: ChatMessage[],
-		options?: {
+		opts?: {
 			includeReasoning?: boolean;
 			thinkingBudget?: number;
+			tools?: Tool[];
+			tool_choice?: ToolChoice;
 		}
-	): Promise<{ content: string; usage?: UsageData }> {
+	): Promise<{ content: string | null; usage?: UsageData; tool_calls?: any[] }> {
 		try {
-			let content = "";
+			let content: string | null = "";
 			let usage: UsageData | undefined;
+			let tool_calls: any[] | undefined;
 
 			// Collect all chunks from the stream
-			for await (const chunk of this.streamContent(modelId, systemPrompt, messages, options)) {
+			for await (const chunk of this.streamContent(modelId, systemPrompt, messages, opts)) {
 				if (chunk.type === "text" && typeof chunk.data === "string") {
 					content += chunk.data;
 				} else if (chunk.type === "usage" && typeof chunk.data === "object") {
 					usage = chunk.data as UsageData;
+				} else if (chunk.type === "tool_code" && typeof chunk.data === "object") {
+					content = null;
+					if (!tool_calls) {
+						tool_calls = [];
+					}
+					const toolData = chunk.data as { name: string; args: object };
+					tool_calls.push({
+						id: `call_${crypto.randomUUID()}`,
+						type: "function",
+						function: {
+							name: toolData.name,
+							arguments: JSON.stringify(toolData.args)
+						}
+					});
 				}
 				// Skip reasoning chunks for non-streaming responses
 			}
 
-			return { content, usage };
+			return { content, usage, tool_calls };
 		} catch (error: unknown) {
 			// Handle rate limiting for non-streaming requests
 			if (this.autoSwitchHelper.isRateLimitError(error)) {
@@ -602,7 +709,7 @@ export class GeminiApiClient {
 					modelId,
 					systemPrompt,
 					messages,
-					options,
+					opts,
 					this.streamContent.bind(this)
 				);
 				if (fallbackResult) {
