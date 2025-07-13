@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { Env, ChatCompletionRequest, ChatCompletionResponse, Tool, ToolChoice } from "../types";
+import { Env, ChatCompletionRequest, ChatCompletionResponse } from "../types";
 import { geminiCliModels, DEFAULT_MODEL, getAllModelIds } from "../models";
 import { OPENAI_MODEL_OWNER } from "../config";
 import { DEFAULT_THINKING_BUDGET } from "../constants";

@@ -1,4 +1,4 @@
-import { StreamChunk, ReasoningData, ToolCall } from "./types";
+import { StreamChunk, ReasoningData } from "./types";
 import { OPENAI_CHAT_COMPLETION_OBJECT } from "./config";
 
 // OpenAI API interfaces
@@ -123,9 +123,8 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 			} else if (chunk.type === "real_thinking" && chunk.data && typeof chunk.data === "string") {
 				// Handle real thinking content from Gemini
 				const delta: OpenAIDelta = {
-					reasoning: chunk.data,
-					reasoning_content: null,
-					tool_calls: null
+					reasoning_content: chunk.data,
+					content: null
 				};
 
 				const openAIChunk: OpenAIChunk = {
@@ -152,9 +151,8 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 			} else if (chunk.type === "reasoning" && isReasoningData(chunk.data)) {
 				// Handle thinking/reasoning chunks (original format)
 				const delta: OpenAIDelta = {
-					reasoning: chunk.data.reasoning,
-					reasoning_content: null,
-					tool_calls: null
+					reasoning_content: chunk.data.reasoning,
+					content: null
 				};
 
 				const openAIChunk: OpenAIChunk = {

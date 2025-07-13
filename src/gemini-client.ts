@@ -271,7 +271,7 @@ export class GeminiApiClient {
 			const parameters = tool.function.parameters ? { ...(tool.function.parameters as object) } : undefined;
 
 			if (parameters) {
-				delete (parameters as any)["$schema"];
+				delete (parameters as Record<string, unknown>)["$schema"];
 			}
 
 			return {
@@ -346,7 +346,7 @@ export class GeminiApiClient {
 			needsThinkingClose = streamThinkingAsContent; // Only need to close if we streamed as content
 		}
 
-		const streamRequest: any = {
+		const streamRequest: Record<string, unknown> = {
 			model: modelId,
 			project: projectId,
 			request: {
@@ -670,11 +670,11 @@ export class GeminiApiClient {
 			tools?: Tool[];
 			tool_choice?: ToolChoice;
 		}
-	): Promise<{ content: string | null; usage?: UsageData; tool_calls?: any[] }> {
+	): Promise<{ content: string | null; usage?: UsageData; tool_calls?: ToolCall[] }> {
 		try {
 			let content: string | null = "";
 			let usage: UsageData | undefined;
-			let tool_calls: any[] | undefined;
+			let tool_calls: ToolCall[] | undefined;
 
 			// Collect all chunks from the stream
 			for await (const chunk of this.streamContent(modelId, systemPrompt, messages, opts)) {
