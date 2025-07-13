@@ -39,8 +39,32 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 
 		// Check environment settings for real thinking
 		const isRealThinkingEnabled = c.env.ENABLE_REAL_THINKING === "true";
-		const includeReasoning = isRealThinkingEnabled; // Automatically enable reasoning when real thinking is enabled
-		const thinkingBudget = body.thinking_budget ?? DEFAULT_THINKING_BUDGET; // Default to dynamic allocation
+		let includeReasoning = isRealThinkingEnabled; // Automatically enable reasoning when real thinking is enabled
+		let thinkingBudget = body.thinking_budget ?? DEFAULT_THINKING_BUDGET; // Default to dynamic allocation
+
+		// Handle effort level mapping to thinking_budget (check multiple locations for client compatibility)
+		const reasoning_effort =
+			body.reasoning_effort || body.extra_body?.reasoning_effort || body.model_params?.reasoning_effort;
+		if (reasoning_effort) {
+			includeReasoning = true; // Effort implies reasoning
+			const isFlashModel = model.includes("flash");
+
+			switch (reasoning_effort) {
+				case "low":
+					thinkingBudget = 1024;
+					break;
+				case "medium":
+					thinkingBudget = isFlashModel ? 12288 : 16384;
+					break;
+				case "high":
+					thinkingBudget = isFlashModel ? 24576 : 32768;
+					break;
+				case "none":
+					thinkingBudget = 0;
+					includeReasoning = false;
+					break;
+			}
+		}
 
 		const tools = body.tools;
 		const tool_choice = body.tool_choice;

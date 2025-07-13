@@ -33,13 +33,23 @@ export interface ModelInfo {
 }
 
 // --- Chat Completion Request Interface ---
+export type EffortLevel = "none" | "low" | "medium" | "high";
+
 export interface ChatCompletionRequest {
 	model: string;
 	messages: ChatMessage[];
 	stream?: boolean;
 	thinking_budget?: number; // Optional thinking token budget
+	reasoning_effort?: EffortLevel; // Optional effort level for thinking
 	tools?: Tool[];
 	tool_choice?: ToolChoice;
+	// Support for common custom parameter locations
+	extra_body?: {
+		reasoning_effort?: EffortLevel;
+	};
+	model_params?: {
+		reasoning_effort?: EffortLevel;
+	};
 }
 
 export interface Tool {
