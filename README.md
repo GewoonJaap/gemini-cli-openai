@@ -32,7 +32,12 @@ Transform Google's Gemini models into OpenAI-compatible endpoints using Cloudfla
 > - **Fake thinking**: Set `ENABLE_FAKE_THINKING=true` to generate synthetic reasoning text (good for testing)
 > - **Real thinking**: Set `ENABLE_REAL_THINKING=true` to use Gemini's native reasoning capabilities
 > 
-> Real thinking is controlled entirely by the `ENABLE_REAL_THINKING` environment variable. You can optionally set a `"thinking_budget"` in your request (token limit for reasoning, -1 for dynamic allocation).
+> Real thinking is controlled entirely by the `ENABLE_REAL_THINKING` environment variable. You can optionally set a `"thinking_budget"` in your request (token limit for reasoning, -1 for dynamic allocation, 0 to disable thinking entirely).
+- **Reasoning Effort Support**: You can control the reasoning effort of thinking models by including `reasoning_effort` in the request body (e.g., `extra_body` or `model_params`). This parameter allows you to fine-tune the model's internal reasoning process, balancing between speed and depth of thought.
+  - `none`: Disables thinking (`thinking_budget = 0`).
+  - `low`: Sets `thinking_budget = 1024`.
+  - `medium`: Sets `thinking_budget = 12288` for flash models, `16384` for other models.
+  - `high`: Sets `thinking_budget = 24576` for flash models, `32768` for other models.
 > 
 > Set `STREAM_THINKING_AS_CONTENT=true` to stream reasoning as content with `<thinking>` tags (DeepSeek R1 style) instead of using the reasoning field.
 
@@ -153,6 +158,10 @@ npm run dev
 | `ENABLE_REAL_THINKING` | ❌ | Enable real Gemini thinking output (set to "true" to enable) |
 | `STREAM_THINKING_AS_CONTENT` | ❌ | Stream thinking as content with `<thinking>` tags (DeepSeek R1 style) |
 | `ENABLE_AUTO_MODEL_SWITCHING` | ❌ | Enable automatic fallback from pro to flash models on rate limits (set to "true" to enable) |
+| `GEMINI_MODERATION_HARASSMENT_THRESHOLD` | ❌ | Sets the moderation threshold for harassment content (e.g., `BLOCK_NONE`, `BLOCK_ONLY_HIGH`) |
+| `GEMINI_MODERATION_HATE_SPEECH_THRESHOLD` | ❌ | Sets the moderation threshold for hate speech content (e.g., `BLOCK_NONE`, `BLOCK_ONLY_HIGH`) |
+| `GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD` | ❌ | Sets the moderation threshold for sexually explicit content (e.g., `BLOCK_NONE`, `BLOCK_ONLY_HIGH`) |
+| `GEMINI_MODERATION_DANGEROUS_CONTENT_THRESHOLD` | ❌ | Sets the moderation threshold for dangerous content (e.g., `BLOCK_NONE`, `BLOCK_ONLY_HIGH`) |
 
 **Authentication Security:**
 - When `OPENAI_API_KEY` is set, all `/v1/*` endpoints require authentication

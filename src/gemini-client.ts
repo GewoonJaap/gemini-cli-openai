@@ -302,6 +302,35 @@ export class GeminiApiClient {
 	}
 
 	/**
+	 * Constructs safety settings from environment variables.
+	 */
+	private getSafetySettings(): Array<{ category: string; threshold: string }> | undefined {
+		const safetySettings: Array<{ category: string; threshold: string }> = [];
+
+		const harassmentThreshold = this.env.GEMINI_MODERATION_HARASSMENT_THRESHOLD;
+		if (harassmentThreshold) {
+			safetySettings.push({ category: "HARM_CATEGORY_HARASSMENT", threshold: harassmentThreshold });
+		}
+
+		const hateSpeechThreshold = this.env.GEMINI_MODERATION_HATE_SPEECH_THRESHOLD;
+		if (hateSpeechThreshold) {
+			safetySettings.push({ category: "HARM_CATEGORY_HATE_SPEECH", threshold: hateSpeechThreshold });
+		}
+
+		const sexuallyExplicitThreshold = this.env.GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD;
+		if (sexuallyExplicitThreshold) {
+			safetySettings.push({ category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: sexuallyExplicitThreshold });
+		}
+
+		const dangerousContentThreshold = this.env.GEMINI_MODERATION_DANGEROUS_CONTENT_THRESHOLD;
+		if (dangerousContentThreshold) {
+			safetySettings.push({ category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: dangerousContentThreshold });
+		}
+
+		return safetySettings.length > 0 ? safetySettings : undefined;
+	}
+
+	/**
 	 * Stream content from Gemini API.
 	 */
 	async *streamContent(
@@ -354,6 +383,11 @@ export class GeminiApiClient {
 				generationConfig
 			}
 		};
+
+		const safetySettings = this.getSafetySettings();
+		if (safetySettings) {
+			streamRequest.request.safetySettings = safetySettings;
+		}
 
 		if (opts?.tools) {
 			streamRequest.request.tools = this.toolToGeminiFormat(opts.tools);
