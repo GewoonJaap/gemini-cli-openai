@@ -3,6 +3,9 @@
 
 name: Build & Style Check
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [ "main" ]
