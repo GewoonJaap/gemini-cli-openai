@@ -342,6 +342,14 @@ export class GeminiApiClient {
 			thinkingBudget?: number;
 			tools?: Tool[];
 			tool_choice?: ToolChoice;
+			max_tokens?: number;
+			temperature?: number;
+			top_p?: number;
+			stop?: string | string[];
+			presence_penalty?: number;
+			frequency_penalty?: number;
+			seed?: number;
+			response_format?: { type: "text" | "json_object" };
 		}
 	): AsyncGenerator<StreamChunk> {
 		await this.authManager.initializeAuth();
@@ -363,7 +371,7 @@ export class GeminiApiClient {
 		// Use the validation helper to create a proper generation config
 		const generationConfig = GenerationConfigValidator.createValidatedConfig(
 			modelId,
-			{ thinkingBudget: opts?.thinkingBudget },
+			opts,
 			isRealThinkingEnabled,
 			includeReasoning
 		);
@@ -703,6 +711,14 @@ export class GeminiApiClient {
 			thinkingBudget?: number;
 			tools?: Tool[];
 			tool_choice?: ToolChoice;
+			max_tokens?: number;
+			temperature?: number;
+			top_p?: number;
+			stop?: string | string[];
+			presence_penalty?: number;
+			frequency_penalty?: number;
+			seed?: number;
+			response_format?: { type: "text" | "json_object" };
 		}
 	): Promise<{ content: string | null; usage?: UsageData; tool_calls?: ToolCall[] }> {
 		try {

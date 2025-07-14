@@ -54,6 +54,18 @@ export interface ChatCompletionRequest {
 	model_params?: {
 		reasoning_effort?: EffortLevel;
 	};
+
+	// Newly added OpenAI parameters
+	max_tokens?: number;
+	temperature?: number;
+	top_p?: number;
+	stop?: string | string[];
+	presence_penalty?: number;
+	frequency_penalty?: number;
+	seed?: number;
+	response_format?: {
+		type: "text" | "json_object";
+	};
 }
 
 export interface Tool {
