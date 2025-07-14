@@ -137,3 +137,5 @@ dist
 .dev.vars
 .wrangler/
 wrangler.toml
+gemini-api.md
+package-lock.json
