@@ -8,6 +8,10 @@ export interface Env {
 	ENABLE_REAL_THINKING?: string; // Optional flag to enable real Gemini thinking output (set to "true" to enable)
 	STREAM_THINKING_AS_CONTENT?: string; // Optional flag to stream thinking as content with <thinking> tags (set to "true" to enable)
 	ENABLE_AUTO_MODEL_SWITCHING?: string; // Optional flag to enable automatic fallback from pro to flash on 429 errors (set to "true" to enable)
+	GEMINI_MODERATION_HARASSMENT_THRESHOLD?: string;
+	GEMINI_MODERATION_HATE_SPEECH_THRESHOLD?: string;
+	GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD?: string;
+	GEMINI_MODERATION_DANGEROUS_CONTENT_THRESHOLD?: string;
 }
 
 // --- OAuth2 Credentials Interface ---
@@ -49,6 +53,18 @@ export interface ChatCompletionRequest {
 	};
 	model_params?: {
 		reasoning_effort?: EffortLevel;
+	};
+
+	// Newly added OpenAI parameters
+	max_tokens?: number;
+	temperature?: number;
+	top_p?: number;
+	stop?: string | string[];
+	presence_penalty?: number;
+	frequency_penalty?: number;
+	seed?: number;
+	response_format?: {
+		type: "text" | "json_object";
 	};
 }
 

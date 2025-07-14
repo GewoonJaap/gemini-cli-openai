@@ -40,7 +40,19 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 		// Check environment settings for real thinking
 		const isRealThinkingEnabled = c.env.ENABLE_REAL_THINKING === "true";
 		let includeReasoning = isRealThinkingEnabled; // Automatically enable reasoning when real thinking is enabled
-		let thinkingBudget = body.thinking_budget ?? DEFAULT_THINKING_BUDGET; // Default to dynamic allocation
+		const thinkingBudget = body.thinking_budget ?? DEFAULT_THINKING_BUDGET; // Default to dynamic allocation
+
+		// Newly added parameters
+		const generationOptions = {
+			max_tokens: body.max_tokens,
+			temperature: body.temperature,
+			top_p: body.top_p,
+			stop: body.stop,
+			presence_penalty: body.presence_penalty,
+			frequency_penalty: body.frequency_penalty,
+			seed: body.seed,
+			response_format: body.response_format
+		};
 
 		// Handle effort level mapping to thinking_budget (check multiple locations for client compatibility)
 		const reasoning_effort =
@@ -159,7 +171,8 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 						includeReasoning,
 						thinkingBudget,
 						tools,
-						tool_choice
+						tool_choice,
+						...generationOptions
 					});
 
 					for await (const chunk of geminiStream) {
@@ -199,7 +212,8 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 					includeReasoning,
 					thinkingBudget,
 					tools,
-					tool_choice
+					tool_choice,
+					...generationOptions
 				});
 
 				const response: ChatCompletionResponse = {

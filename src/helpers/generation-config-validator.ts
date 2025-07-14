@@ -1,5 +1,6 @@
 import { geminiCliModels } from "../models";
-import { DEFAULT_THINKING_BUDGET, DEFAULT_TEMPERATURE } from "../constants";
+import { DEFAULT_THINKING_BUDGET } from "../constants";
+import { ChatCompletionRequest } from "../types";
 
 /**
  * Helper class to validate and correct generation configurations for different Gemini models.
@@ -46,13 +47,23 @@ export class GenerationConfigValidator {
 	 */
 	static createValidatedConfig(
 		modelId: string,
-		options: { thinkingBudget?: number } = {},
+		options: Partial<ChatCompletionRequest> = {},
 		isRealThinkingEnabled: boolean,
 		includeReasoning: boolean
 	): Record<string, unknown> {
 		const generationConfig: Record<string, unknown> = {
-			temperature: DEFAULT_TEMPERATURE
+			temperature: options.temperature,
+			maxOutputTokens: options.max_tokens,
+			topP: options.top_p,
+			stopSequences: typeof options.stop === "string" ? [options.stop] : options.stop,
+			presencePenalty: options.presence_penalty,
+			frequencyPenalty: options.frequency_penalty,
+			seed: options.seed
 		};
+
+		if (options.response_format?.type === "json_object") {
+			generationConfig.responseMimeType = "application/json";
+		}
 
 		const modelInfo = geminiCliModels[modelId];
 		const isThinkingModel = modelInfo?.thinking || false;
@@ -77,6 +88,9 @@ export class GenerationConfigValidator {
 				};
 			}
 		}
+
+		// Remove undefined keys
+		Object.keys(generationConfig).forEach((key) => generationConfig[key] === undefined && delete generationConfig[key]);
 
 		return generationConfig;
 	}

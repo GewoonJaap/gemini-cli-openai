@@ -1,0 +1,28 @@
+name = "gemini-cli-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+compatibility_flags = ["nodejs_compat"] # Required for the 'google-auth-library'
+
+# --- KV Namespaces ---
+kv_namespaces = [
+  { binding = "GEMINI_CLI_KV", id = "6c761101b4a34c089e6a123f2782c5fd" }
+]
+
+# --- Environment Variables ---
+# [vars]
+# # OPTIONAL (but recommended): Your Google Cloud Project ID.
+# # Providing this skips the automatic discovery process, making the worker faster and more reliable.
+# # If omitted, the worker will attempt to discover it on the first run.
+# GEMINI_PROJECT_ID = "your-google-cloud-project-id"
+
+# --- Local Development Configuration ---
+# This section configures local development with Docker and miniflare
+[dev]
+ip = "0.0.0.0"          # Bind to all interfaces for Docker access
+port = 8787             # Port for local development server
+# Note: --persist-to flag in Docker handles storage location
+
+# wrangler.toml (wrangler v3.88.0^)
+[observability.logs]
+enabled = true

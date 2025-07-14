@@ -302,6 +302,35 @@ export class GeminiApiClient {
 	}
 
 	/**
+	 * Constructs safety settings from environment variables.
+	 */
+	private getSafetySettings(): Array<{ category: string; threshold: string }> | undefined {
+		const safetySettings: Array<{ category: string; threshold: string }> = [];
+
+		const harassmentThreshold = this.env.GEMINI_MODERATION_HARASSMENT_THRESHOLD;
+		if (harassmentThreshold) {
+			safetySettings.push({ category: "HARM_CATEGORY_HARASSMENT", threshold: harassmentThreshold });
+		}
+
+		const hateSpeechThreshold = this.env.GEMINI_MODERATION_HATE_SPEECH_THRESHOLD;
+		if (hateSpeechThreshold) {
+			safetySettings.push({ category: "HARM_CATEGORY_HATE_SPEECH", threshold: hateSpeechThreshold });
+		}
+
+		const sexuallyExplicitThreshold = this.env.GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD;
+		if (sexuallyExplicitThreshold) {
+			safetySettings.push({ category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: sexuallyExplicitThreshold });
+		}
+
+		const dangerousContentThreshold = this.env.GEMINI_MODERATION_DANGEROUS_CONTENT_THRESHOLD;
+		if (dangerousContentThreshold) {
+			safetySettings.push({ category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: dangerousContentThreshold });
+		}
+
+		return safetySettings.length > 0 ? safetySettings : undefined;
+	}
+
+	/**
 	 * Stream content from Gemini API.
 	 */
 	async *streamContent(
@@ -313,6 +342,14 @@ export class GeminiApiClient {
 			thinkingBudget?: number;
 			tools?: Tool[];
 			tool_choice?: ToolChoice;
+			max_tokens?: number;
+			temperature?: number;
+			top_p?: number;
+			stop?: string | string[];
+			presence_penalty?: number;
+			frequency_penalty?: number;
+			seed?: number;
+			response_format?: { type: "text" | "json_object" };
 		}
 	): AsyncGenerator<StreamChunk> {
 		await this.authManager.initializeAuth();
@@ -334,7 +371,7 @@ export class GeminiApiClient {
 		// Use the validation helper to create a proper generation config
 		const generationConfig = GenerationConfigValidator.createValidatedConfig(
 			modelId,
-			{ thinkingBudget: opts?.thinkingBudget },
+			opts,
 			isRealThinkingEnabled,
 			includeReasoning
 		);
@@ -354,6 +391,11 @@ export class GeminiApiClient {
 				generationConfig
 			}
 		};
+
+		const safetySettings = this.getSafetySettings();
+		if (safetySettings) {
+			streamRequest.request.safetySettings = safetySettings;
+		}
 
 		if (opts?.tools) {
 			streamRequest.request.tools = this.toolToGeminiFormat(opts.tools);
@@ -669,6 +711,14 @@ export class GeminiApiClient {
 			thinkingBudget?: number;
 			tools?: Tool[];
 			tool_choice?: ToolChoice;
+			max_tokens?: number;
+			temperature?: number;
+			top_p?: number;
+			stop?: string | string[];
+			presence_penalty?: number;
+			frequency_penalty?: number;
+			seed?: number;
+			response_format?: { type: "text" | "json_object" };
 		}
 	): Promise<{ content: string | null; usage?: UsageData; tool_calls?: ToolCall[] }> {
 		try {
