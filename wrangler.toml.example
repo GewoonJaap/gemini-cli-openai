@@ -11,6 +11,12 @@ kv_namespaces = [
 
 # --- Environment Variables ---
 # [vars]
+#
+# # REQUIRED: Your oauth_creds.json file content as a single-line string.
+# # Get this file by authenticating with the Gemini CLI (`gemini auth`).
+# # It's usually located at ~/.gemini/oauth_creds.json on your local machine.
+# GOOGLE_OAUTH_CREDS_JSON = '{"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","expiry_date":1719...}'
+#
 # # OPTIONAL (but recommended): Your Google Cloud Project ID.
 # # Providing this skips the automatic discovery process, making the worker faster and more reliable.
 # # If omitted, the worker will attempt to discover it on the first run.

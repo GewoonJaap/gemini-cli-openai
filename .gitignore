@@ -136,3 +136,5 @@ dist
 .pnp.*
 .dev.vars
 .wrangler/
+gemini-api.md
+package-lock.json

@@ -39,15 +39,56 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 
 		// Check environment settings for real thinking
 		const isRealThinkingEnabled = c.env.ENABLE_REAL_THINKING === "true";
-		const includeReasoning = isRealThinkingEnabled; // Automatically enable reasoning when real thinking is enabled
-		const thinkingBudget = body.thinking_budget ?? DEFAULT_THINKING_BUDGET; // Default to dynamic allocation
+		let includeReasoning = isRealThinkingEnabled; // Automatically enable reasoning when real thinking is enabled
+		let thinkingBudget = body.thinking_budget ?? DEFAULT_THINKING_BUDGET; // Default to dynamic allocation
+
+		// Newly added parameters
+		const generationOptions = {
+			max_tokens: body.max_tokens,
+			temperature: body.temperature,
+			top_p: body.top_p,
+			stop: body.stop,
+			presence_penalty: body.presence_penalty,
+			frequency_penalty: body.frequency_penalty,
+			seed: body.seed,
+			response_format: body.response_format
+		};
+
+		// Handle effort level mapping to thinking_budget (check multiple locations for client compatibility)
+		const reasoning_effort =
+			body.reasoning_effort || body.extra_body?.reasoning_effort || body.model_params?.reasoning_effort;
+		if (reasoning_effort) {
+			includeReasoning = true; // Effort implies reasoning
+			const isFlashModel = model.includes("flash");
+
+			switch (reasoning_effort) {
+				case "low":
+					thinkingBudget = 1024;
+					break;
+				case "medium":
+					thinkingBudget = isFlashModel ? 12288 : 16384;
+					break;
+				case "high":
+					thinkingBudget = isFlashModel ? 24576 : 32768;
+					break;
+				case "none":
+					thinkingBudget = 0;
+					includeReasoning = false;
+					break;
+			}
+		}
+
+		const tools = body.tools;
+		const tool_choice = body.tool_choice;
 
 		console.log("Request body parsed:", {
 			model,
 			messageCount: messages.length,
 			stream,
 			includeReasoning,
-			thinkingBudget
+			thinkingBudget,
+			tools,
+			tool_choice
 		});
 
 		if (!messages.length) {
@@ -128,7 +169,10 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 					console.log("Starting stream generation");
 					const geminiStream = geminiClient.streamContent(model, systemPrompt, otherMessages, {
 						includeReasoning,
-						thinkingBudget
+						thinkingBudget,
+						tools,
+						tool_choice,
+						...generationOptions
 					});
 
 					for await (const chunk of geminiStream) {
@@ -166,7 +210,10 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 				console.log("Starting non-streaming completion");
 				const completion = await geminiClient.getCompletion(model, systemPrompt, otherMessages, {
 					includeReasoning,
-					thinkingBudget
+					thinkingBudget,
+					tools,
+					tool_choice,
+					...generationOptions
 				});
 
 				const response: ChatCompletionResponse = {
@@ -179,9 +226,10 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 							index: 0,
 							message: {
 								role: "assistant",
-								content: completion.content
+								content: completion.content,
+								tool_calls: completion.tool_calls
 							},
-							finish_reason: "stop"
+							finish_reason: completion.tool_calls ? "tool_calls" : "stop"
 						}
 					]
 				};
