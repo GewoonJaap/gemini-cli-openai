@@ -40,7 +40,7 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 		// Check environment settings for real thinking
 		const isRealThinkingEnabled = c.env.ENABLE_REAL_THINKING === "true";
 		let includeReasoning = isRealThinkingEnabled; // Automatically enable reasoning when real thinking is enabled
-		const thinkingBudget = body.thinking_budget ?? DEFAULT_THINKING_BUDGET; // Default to dynamic allocation
+		let thinkingBudget = body.thinking_budget ?? DEFAULT_THINKING_BUDGET; // Default to dynamic allocation
 
 		// Newly added parameters
 		const generationOptions = {
