@@ -33,3 +33,25 @@ export const AUTO_SWITCH_MODEL_MAP = {
 
 // HTTP status codes for rate limiting
 export const RATE_LIMIT_STATUS_CODES = [429, 503] as const;
+
+// Reasoning effort mapping to thinking budgets
+export const REASONING_EFFORT_BUDGETS = {
+	none: 0,
+	low: 1024,
+	medium: {
+		flash: 12288,
+		default: 16384
+	},
+	high: {
+		flash: 24576,
+		default: 32768
+	}
+} as const;
+
+// Gemini safety categories
+export const GEMINI_SAFETY_CATEGORIES = {
+	HARASSMENT: "HARM_CATEGORY_HARASSMENT",
+	HATE_SPEECH: "HARM_CATEGORY_HATE_SPEECH",
+	SEXUALLY_EXPLICIT: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+	DANGEROUS_CONTENT: "HARM_CATEGORY_DANGEROUS_CONTENT"
+} as const;

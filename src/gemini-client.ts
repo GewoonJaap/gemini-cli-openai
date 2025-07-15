@@ -1,4 +1,14 @@
-import { Env, StreamChunk, ReasoningData, UsageData, ChatMessage, MessageContent } from "./types";
+import {
+	Env,
+	StreamChunk,
+	ReasoningData,
+	UsageData,
+	ChatMessage,
+	MessageContent,
+	Tool,
+	ToolChoice,
+	GeminiFunctionCall
+} from "./types";
 import { AuthManager } from "./auth";
 import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "./config";
 import { REASONING_MESSAGES, REASONING_CHUNK_DELAY, THINKING_CONTENT_CHUNK_SIZE } from "./constants";
@@ -29,6 +39,16 @@ interface GeminiResponse {
 interface GeminiPart {
 	text?: string;
 	thought?: boolean; // For real thinking chunks from Gemini
+	functionCall?: {
+		name: string;
+		args: object;
+	};
+	functionResponse?: {
+		name: string;
+		response: {
+			result: string;
+		};
+	};
 	inlineData?: {
 		mimeType: string;
 		data: string;
@@ -155,6 +175,47 @@ export class GeminiApiClient {
 	private messageToGeminiFormat(msg: ChatMessage): GeminiFormattedMessage {
 		const role = msg.role === "assistant" ? "model" : "user";
 
+		// Handle tool call results (tool role in OpenAI format)
+		if (msg.role === "tool") {
+			return {
+				role: "user",
+				parts: [
+					{
+						functionResponse: {
+							name: msg.tool_call_id || "unknown_function",
+							response: {
+								result: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)
+							}
+						}
+					}
+				]
+			};
+		}
+
+		// Handle assistant messages with tool calls
+		if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
+			const parts: GeminiPart[] = [];
+
+			// Add text content if present
+			if (typeof msg.content === "string" && msg.content.trim()) {
+				parts.push({ text: msg.content });
+			}
+
+			// Add function calls
+			for (const toolCall of msg.tool_calls) {
+				if (toolCall.type === "function") {
+					parts.push({
+						functionCall: {
+							name: toolCall.function.name,
+							args: JSON.parse(toolCall.function.arguments)
+						}
+					});
+				}
+			}
+
+			return { role: "model", parts };
+		}
+
 		if (typeof msg.content === "string") {
 			// Simple text message
 			return {
@@ -239,6 +300,18 @@ export class GeminiApiClient {
 		options?: {
 			includeReasoning?: boolean;
 			thinkingBudget?: number;
+			tools?: Tool[];
+			tool_choice?: ToolChoice;
+			max_tokens?: number;
+			temperature?: number;
+			top_p?: number;
+			stop?: string | string[];
+			presence_penalty?: number;
+			frequency_penalty?: number;
+			seed?: number;
+			response_format?: {
+				type: "text" | "json_object";
+			};
 		}
 	): AsyncGenerator<StreamChunk> {
 		await this.authManager.initializeAuth();
@@ -260,9 +333,22 @@ export class GeminiApiClient {
 		// Use the validation helper to create a proper generation config
 		const generationConfig = GenerationConfigValidator.createValidatedConfig(
 			modelId,
-			{ thinkingBudget: options?.thinkingBudget },
+			{
+				thinking_budget: options?.thinkingBudget,
+				tools: options?.tools,
+				tool_choice: options?.tool_choice,
+				max_tokens: options?.max_tokens,
+				temperature: options?.temperature,
+				top_p: options?.top_p,
+				stop: options?.stop,
+				presence_penalty: options?.presence_penalty,
+				frequency_penalty: options?.frequency_penalty,
+				seed: options?.seed,
+				response_format: options?.response_format
+			},
 			isRealThinkingEnabled,
-			includeReasoning
+			includeReasoning,
+			this.env
 		);
 
 		// For thinking models with fake thinking (fallback when real thinking is not enabled or not requested)
@@ -550,6 +636,27 @@ export class GeminiApiClient {
 
 						yield { type: "text", data: part.text };
 					}
+					// Handle function calls from Gemini
+					else if (part.functionCall) {
+						// Close thinking tag before function call if needed
+						if ((needsThinkingClose || (realThinkingAsContent && hasStartedThinking)) && !hasClosedThinking) {
+							yield {
+								type: "thinking_content",
+								data: "\n</thinking>\n\n"
+							};
+							hasClosedThinking = true;
+						}
+
+						const functionCallData: GeminiFunctionCall = {
+							name: part.functionCall.name,
+							args: part.functionCall.args
+						};
+
+						yield {
+							type: "tool_code",
+							data: functionCallData
+						};
+					}
 					// Note: Skipping unknown part structures
 				}
 			}
@@ -578,11 +685,28 @@ export class GeminiApiClient {
 		options?: {
 			includeReasoning?: boolean;
 			thinkingBudget?: number;
+			tools?: Tool[];
+			tool_choice?: ToolChoice;
+			max_tokens?: number;
+			temperature?: number;
+			top_p?: number;
+			stop?: string | string[];
+			presence_penalty?: number;
+			frequency_penalty?: number;
+			seed?: number;
+			response_format?: {
+				type: "text" | "json_object";
+			};
 		}
-	): Promise<{ content: string; usage?: UsageData }> {
+	): Promise<{
+		content: string;
+		usage?: UsageData;
+		tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+	}> {
 		try {
 			let content = "";
 			let usage: UsageData | undefined;
+			const tool_calls: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }> = [];
 
 			// Collect all chunks from the stream
 			for await (const chunk of this.streamContent(modelId, systemPrompt, messages, options)) {
@@ -590,11 +714,25 @@ export class GeminiApiClient {
 					content += chunk.data;
 				} else if (chunk.type === "usage" && typeof chunk.data === "object") {
 					usage = chunk.data as UsageData;
+				} else if (chunk.type === "tool_code" && typeof chunk.data === "object") {
+					const toolData = chunk.data as GeminiFunctionCall;
+					tool_calls.push({
+						id: `call_${crypto.randomUUID()}`,
+						type: "function",
+						function: {
+							name: toolData.name,
+							arguments: JSON.stringify(toolData.args)
+						}
+					});
 				}
 				// Skip reasoning chunks for non-streaming responses
 			}
 
-			return { content, usage };
+			return {
+				content,
+				usage,
+				tool_calls: tool_calls.length > 0 ? tool_calls : undefined
+			};
 		} catch (error: unknown) {
 			// Handle rate limiting for non-streaming requests
 			if (this.autoSwitchHelper.isRateLimitError(error)) {

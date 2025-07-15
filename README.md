@@ -10,6 +10,9 @@ Transform Google's Gemini models into OpenAI-compatible endpoints using Cloudfla
 - 🎯 **OpenAI-Compatible API** - Drop-in replacement for OpenAI endpoints
 - 📚 **OpenAI SDK Support** - Works with official OpenAI SDKs and libraries
 - 🖼️ **Vision Support** - Multi-modal conversations with images (base64 & URLs)
+- 🔧 **Tool Calling Support** - Function calling with Gemini API integration
+- 🧠 **Advanced Reasoning** - Support for Gemini's thinking capabilities with effort controls
+- 🛡️ **Content Safety** - Configurable Gemini moderation settings
 - 🌐 **Third-party Integration** - Compatible with Open WebUI, ChatGPT clients, and more
 - ⚡ **Cloudflare Workers** - Global edge deployment with low latency
 - 🔄 **Smart Token Caching** - Intelligent token management with KV storage
@@ -32,11 +35,79 @@ Transform Google's Gemini models into OpenAI-compatible endpoints using Cloudfla
 > - **Fake thinking**: Set `ENABLE_FAKE_THINKING=true` to generate synthetic reasoning text (good for testing)
 > - **Real thinking**: Set `ENABLE_REAL_THINKING=true` to use Gemini's native reasoning capabilities
 > 
-> Real thinking is controlled entirely by the `ENABLE_REAL_THINKING` environment variable. You can optionally set a `"thinking_budget"` in your request (token limit for reasoning, -1 for dynamic allocation).
+> Real thinking is controlled entirely by the `ENABLE_REAL_THINKING` environment variable. You can optionally set a `"thinking_budget"` in your request (token limit for reasoning, -1 for dynamic allocation, 0 to disable thinking entirely).
+
+- **Reasoning Effort Support**: You can control the reasoning effort of thinking models by including `reasoning_effort` in the request body (e.g., `extra_body` or `model_params`). This parameter allows you to fine-tune the model's internal reasoning process, balancing between speed and depth of thought.
+  - `none`: Disables thinking (`thinking_budget = 0`).
+  - `low`: Sets `thinking_budget = 1024`.
+  - `medium`: Sets `thinking_budget = 12288` for flash models, `16384` for other models.
+  - `high`: Sets `thinking_budget = 24576` for flash models, `32768` for other models.
 > 
 > Set `STREAM_THINKING_AS_CONTENT=true` to stream reasoning as content with `<thinking>` tags (DeepSeek R1 style) instead of using the reasoning field.
 
-## 🛠️ Setup
+## � Tool Calling Support
+
+The worker supports OpenAI-compatible tool calling (function calling) with seamless integration to Gemini's function calling capabilities.
+
+### Using Tool Calls
+
+Include `tools` and optionally `tool_choice` in your request:
+
+```javascript
+const response = await fetch('/v1/chat/completions', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    model: 'gemini-2.5-pro',
+    messages: [
+      { role: 'user', content: 'What is the weather in New York?' }
+    ],
+    tools: [
+      {
+        type: 'function',
+        function: {
+          name: 'get_weather',
+          description: 'Get weather information for a location',
+          parameters: {
+            type: 'object',
+            properties: {
+              location: { type: 'string', description: 'City name' }
+            },
+            required: ['location']
+          }
+        }
+      }
+    ],
+    tool_choice: 'auto'
+  })
+});
+```
+
+### Tool Choice Options
+
+- `auto`: Let the model decide whether to call a function
+- `none`: Disable function calling
+- `{"type": "function", "function": {"name": "function_name"}}`: Force a specific function call
+
+## 🛡️ Content Safety Settings
+
+Configure Gemini's built-in safety filters using environment variables:
+
+```bash
+# Safety threshold options: BLOCK_NONE, BLOCK_FEW, BLOCK_SOME, BLOCK_ONLY_HIGH, HARM_BLOCK_THRESHOLD_UNSPECIFIED
+GEMINI_MODERATION_HARASSMENT_THRESHOLD=BLOCK_NONE
+GEMINI_MODERATION_HATE_SPEECH_THRESHOLD=BLOCK_NONE  
+GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD=BLOCK_SOME
+GEMINI_MODERATION_DANGEROUS_CONTENT_THRESHOLD=BLOCK_ONLY_HIGH
+```
+
+**Safety Categories:**
+- `HARASSMENT`: Content that promotes hatred or violence against individuals/groups
+- `HATE_SPEECH`: Derogatory or demeaning language targeting specific groups
+- `SEXUALLY_EXPLICIT`: Content containing sexual or adult material
+- `DANGEROUS_CONTENT`: Content promoting dangerous or harmful activities
+
+## �🛠️ Setup
 
 ### Prerequisites
 
@@ -153,6 +224,10 @@ npm run dev
 | `ENABLE_REAL_THINKING` | ❌ | Enable real Gemini thinking output (set to "true" to enable) |
 | `STREAM_THINKING_AS_CONTENT` | ❌ | Stream thinking as content with `<thinking>` tags (DeepSeek R1 style) |
 | `ENABLE_AUTO_MODEL_SWITCHING` | ❌ | Enable automatic fallback from pro to flash models on rate limits (set to "true" to enable) |
+| `GEMINI_MODERATION_HARASSMENT_THRESHOLD` | ❌ | Sets the moderation threshold for harassment content (e.g., `BLOCK_NONE`, `BLOCK_ONLY_HIGH`) |
+| `GEMINI_MODERATION_HATE_SPEECH_THRESHOLD` | ❌ | Sets the moderation threshold for hate speech content (e.g., `BLOCK_NONE`, `BLOCK_ONLY_HIGH`) |
+| `GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD` | ❌ | Sets the moderation threshold for sexually explicit content (e.g., `BLOCK_NONE`, `BLOCK_ONLY_HIGH`) |
+| `GEMINI_MODERATION_DANGEROUS_CONTENT_THRESHOLD` | ❌ | Sets the moderation threshold for dangerous content (e.g., `BLOCK_NONE`, `BLOCK_ONLY_HIGH`) |
 
 **Authentication Security:**
 - When `OPENAI_API_KEY` is set, all `/v1/*` endpoints require authentication
