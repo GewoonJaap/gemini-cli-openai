@@ -5,7 +5,7 @@ import {
 	REASONING_EFFORT_BUDGETS,
 	GEMINI_SAFETY_CATEGORIES
 } from "../constants";
-import { ChatCompletionRequest, Env, EffortLevel } from "../types";
+import { ChatCompletionRequest, Env, EffortLevel, SafetyThreshold } from "../types";
 
 /**
  * Helper class to validate and correct generation configurations for different Gemini models.
@@ -49,8 +49,8 @@ export class GenerationConfigValidator {
 	 * @param env - Environment variables containing safety thresholds
 	 * @returns Safety settings configuration
 	 */
-	static createSafetySettings(env: Env): Array<{ category: string; threshold: string }> {
-		const safetySettings: Array<{ category: string; threshold: string }> = [];
+	static createSafetySettings(env: Env): Array<{ category: string; threshold: SafetyThreshold }> {
+		const safetySettings: Array<{ category: string; threshold: SafetyThreshold }> = [];
 
 		if (env.GEMINI_MODERATION_HARASSMENT_THRESHOLD) {
 			safetySettings.push({

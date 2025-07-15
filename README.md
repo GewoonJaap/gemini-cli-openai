@@ -91,7 +91,7 @@ const response = await fetch('/v1/chat/completions', {
 
 ## 🛡️ Content Safety Settings
 
-Configure Gemini's built-in safety filters using environment variables:
+Configure Gemini's built-in safety filters using environment variables in the dev.vars:
 
 ```bash
 # Safety threshold options: BLOCK_NONE, BLOCK_FEW, BLOCK_SOME, BLOCK_ONLY_HIGH, HARM_BLOCK_THRESHOLD_UNSPECIFIED
