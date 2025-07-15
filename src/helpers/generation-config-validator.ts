@@ -5,7 +5,7 @@ import {
 	REASONING_EFFORT_BUDGETS,
 	GEMINI_SAFETY_CATEGORIES
 } from "../constants";
-import { ChatCompletionRequest, Env } from "../types";
+import { ChatCompletionRequest, Env, EffortLevel } from "../types";
 
 /**
  * Helper class to validate and correct generation configurations for different Gemini models.
@@ -18,7 +18,7 @@ export class GenerationConfigValidator {
 	 * @param modelId - The model ID to determine if it's a flash model
 	 * @returns The corresponding thinking budget
 	 */
-	static mapEffortToThinkingBudget(effort: string, modelId: string): number {
+	static mapEffortToThinkingBudget(effort: EffortLevel, modelId: string): number {
 		const isFlashModel = modelId.includes("flash");
 
 		switch (effort) {
@@ -33,6 +33,15 @@ export class GenerationConfigValidator {
 			default:
 				return DEFAULT_THINKING_BUDGET;
 		}
+	}
+
+	/**
+	 * Type guard to check if a value is a valid EffortLevel.
+	 * @param value - The value to check
+	 * @returns True if the value is a valid EffortLevel
+	 */
+	static isValidEffortLevel(value: unknown): value is EffortLevel {
+		return typeof value === "string" && ["none", "low", "medium", "high"].includes(value);
 	}
 
 	/**
@@ -181,7 +190,7 @@ export class GenerationConfigValidator {
 			const reasoning_effort =
 				options.reasoning_effort || options.extra_body?.reasoning_effort || options.model_params?.reasoning_effort;
 
-			if (reasoning_effort) {
+			if (reasoning_effort && this.isValidEffortLevel(reasoning_effort)) {
 				thinkingBudget = this.mapEffortToThinkingBudget(reasoning_effort, modelId);
 				// If effort is "none", disable reasoning
 				if (reasoning_effort === "none") {
