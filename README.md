@@ -17,7 +17,7 @@ Transform Google's Gemini models into OpenAI-compatible endpoints using Cloudfla
 - ⚡ **Cloudflare Workers** - Global edge deployment with low latency
 - 🔄 **Smart Token Caching** - Intelligent token management with KV storage
 - 🆓 **Free Tier Access** - Leverage Google's free tier through Code Assist API
-- 📡 **Real-time Streaming** - Server-sent events for live responses
+- 📡 **Real-time Streaming** - Server-sent events for live responses with token usage
 - 🎭 **Multiple Models** - Access to latest Gemini models including experimental ones
 
 ## 🤖 Supported Models
@@ -551,6 +551,8 @@ The `include_reasoning` parameter enables Gemini's native thinking mode, and `th
 data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1708976947,"model":"gemini-2.5-flash","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
 
 data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1708976947,"model":"gemini-2.5-flash","choices":[{"index":0,"delta":{"content":"! I'm"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1708976947,"model":"gemini-2.5-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":22,"completion_tokens":553,"total_tokens":575}}
 
 data: [DONE]
 ```

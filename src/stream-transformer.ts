@@ -1,4 +1,4 @@
-import { StreamChunk, ReasoningData, GeminiFunctionCall } from "./types";
+import { StreamChunk, ReasoningData, GeminiFunctionCall, UsageData } from "./types";
 import { OPENAI_CHAT_COMPLETION_OBJECT } from "./config";
 
 // OpenAI API interfaces
@@ -43,12 +43,19 @@ interface OpenAIFinalChoice {
 	finish_reason: string;
 }
 
+interface OpenAIUsage {
+	prompt_tokens: number;
+	completion_tokens: number;
+	total_tokens: number;
+}
+
 interface OpenAIFinalChunk {
 	id: string;
 	object: string;
 	created: number;
 	model: string;
 	choices: OpenAIFinalChoice[];
+	usage?: OpenAIUsage;
 }
 
 // Type guard functions
@@ -58,6 +65,10 @@ function isReasoningData(data: unknown): data is ReasoningData {
 
 function isGeminiFunctionCall(data: unknown): data is GeminiFunctionCall {
 	return typeof data === "object" && data !== null && "name" in data && "args" in data;
+}
+
+function isUsageData(data: unknown): data is UsageData {
+	return typeof data === "object" && data !== null && "inputTokens" in data && "outputTokens" in data;
 }
 
 /**
@@ -71,6 +82,7 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 	let firstChunk = true;
 	let toolCallId: string | null = null;
 	let toolCallName: string | null = null;
+	let usageData: UsageData | undefined;
 
 	return new TransformStream({
 		transform(chunk, controller) {
@@ -177,7 +189,7 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 				};
 				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
 			} else if (chunk.type === "tool_code" && isGeminiFunctionCall(chunk.data)) {
-				const toolData = chunk.data as GeminiFunctionCall;
+				const toolData = chunk.data;
 				const toolCode = toolData.args;
 				const functionName = toolData.name;
 
@@ -215,19 +227,21 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 						{
 							index: 0,
 							delta: delta,
-							finish_reason: null
+							finish_reason: null,
+							logprobs: null,
+							matched_stop: null
 						}
-					]
+					],
+					usage: null
 				};
 				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
+			} else if (chunk.type === "usage" && isUsageData(chunk.data)) {
+				// Capture usage data to include in the final chunk
+				usageData = chunk.data;
 			}
-			// Note: Usage chunks are intentionally not forwarded in streaming responses
-			// as OpenAI's streaming format doesn't include usage data in individual chunks.
-			// Usage information is available in non-streaming responses via the usage field.
-			// Future enhancement: Could be added to the final chunk if needed for compatibility.
 		},
 		flush(controller) {
-			// Send the final chunk with the finish reason.
+			// Send the final chunk with the finish reason and usage data if available.
 			const finishReason = toolCallId ? "tool_calls" : "stop";
 			const finalChunk: OpenAIFinalChunk = {
 				id: chatID,
@@ -236,6 +250,16 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 				model: model,
 				choices: [{ index: 0, delta: {}, finish_reason: finishReason }]
 			};
+
+			// Include usage data if available
+			if (usageData) {
+				finalChunk.usage = {
+					prompt_tokens: usageData.inputTokens,
+					completion_tokens: usageData.outputTokens,
+					total_tokens: usageData.inputTokens + usageData.outputTokens
+				};
+			}
+
 			controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
 			controller.enqueue(encoder.encode("data: [DONE]\n\n"));
 		}

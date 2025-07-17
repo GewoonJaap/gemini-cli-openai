@@ -171,7 +171,6 @@ When implementing a new feature:
 - [ ] Update README.md with new functionality
 - [ ] Run `npm run lint` and fix any issues
 - [ ] Run `npm run build` and ensure it passes
-- [ ] Test manually with different scenarios
 - [ ] Update any relevant documentation
 
 ### 🎯 Common Patterns
