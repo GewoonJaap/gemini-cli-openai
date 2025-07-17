@@ -1,4 +1,4 @@
-import { StreamChunk, ReasoningData } from "./types";
+import { StreamChunk, ReasoningData, UsageData } from "./types";
 import { OPENAI_CHAT_COMPLETION_OBJECT } from "./config";
 
 // OpenAI API interfaces
@@ -33,17 +33,28 @@ interface OpenAIFinalChoice {
 	finish_reason: string;
 }
 
+interface OpenAIUsage {
+	prompt_tokens: number;
+	completion_tokens: number;
+	total_tokens: number;
+}
+
 interface OpenAIFinalChunk {
 	id: string;
 	object: string;
 	created: number;
 	model: string;
 	choices: OpenAIFinalChoice[];
+	usage?: OpenAIUsage;
 }
 
 // Type guard functions
 function isReasoningData(data: unknown): data is ReasoningData {
 	return typeof data === "object" && data !== null && "reasoning" in data;
+}
+
+function isUsageData(data: unknown): data is UsageData {
+	return typeof data === "object" && data !== null && "inputTokens" in data && "outputTokens" in data;
 }
 
 /**
@@ -55,6 +66,7 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 	const creationTime = Math.floor(Date.now() / 1000);
 	const encoder = new TextEncoder();
 	let firstChunk = true;
+	let usageData: UsageData | undefined;
 
 	return new TransformStream({
 		transform(chunk, controller) {
@@ -165,14 +177,13 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 					usage: null
 				};
 				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
+			} else if (chunk.type === "usage" && isUsageData(chunk.data)) {
+				// Capture usage data to include in the final chunk
+				usageData = chunk.data;
 			}
-			// Note: Usage chunks are intentionally not forwarded in streaming responses
-			// as OpenAI's streaming format doesn't include usage data in individual chunks.
-			// Usage information is available in non-streaming responses via the usage field.
-			// Future enhancement: Could be added to the final chunk if needed for compatibility.
 		},
 		flush(controller) {
-			// Send the final chunk with the finish reason.
+			// Send the final chunk with the finish reason and usage data if available.
 			const finalChunk: OpenAIFinalChunk = {
 				id: chatID,
 				object: OPENAI_CHAT_COMPLETION_OBJECT,
@@ -180,6 +191,16 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 				model: model,
 				choices: [{ index: 0, delta: {}, finish_reason: "stop" }]
 			};
+
+			// Include usage data if available
+			if (usageData) {
+				finalChunk.usage = {
+					prompt_tokens: usageData.inputTokens,
+					completion_tokens: usageData.outputTokens,
+					total_tokens: usageData.inputTokens + usageData.outputTokens
+				};
+			}
+
 			controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
 			controller.enqueue(encoder.encode("data: [DONE]\n\n"));
 		}
