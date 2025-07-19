@@ -330,10 +330,7 @@ export class GeminiApiClient {
 		const streamThinkingAsContent = this.env.STREAM_THINKING_AS_CONTENT === "true";
 		const includeReasoning = options?.includeReasoning || false;
 
-		// Use the validation helper to create a proper generation config
-		const generationConfig = GenerationConfigValidator.createValidatedConfig(
-			modelId,
-			{
+    const req = {
 				thinking_budget: options?.thinkingBudget,
 				tools: options?.tools,
 				tool_choice: options?.tool_choice,
@@ -345,11 +342,18 @@ export class GeminiApiClient {
 				frequency_penalty: options?.frequency_penalty,
 				seed: options?.seed,
 				response_format: options?.response_format
-			},
+			}
+
+		// Use the validation helper to create a proper generation config
+		const generationConfig = GenerationConfigValidator.createValidatedConfig(
+			modelId,
+      req,
 			isRealThinkingEnabled,
 			includeReasoning,
 			this.env
 		);
+
+    const { tools, toolConfig } = GenerationConfigValidator.createValidateTools(req);
 
 		// For thinking models with fake thinking (fallback when real thinking is not enabled or not requested)
 		let needsThinkingClose = false;
@@ -358,14 +362,17 @@ export class GeminiApiClient {
 			needsThinkingClose = streamThinkingAsContent; // Only need to close if we streamed as content
 		}
 
-		const streamRequest = {
-			model: modelId,
-			project: projectId,
-			request: {
-				contents: contents,
-				generationConfig
-			}
-		};
+    const streamRequest = {
+      model: modelId,
+      project: projectId,
+      request: {
+        contents: contents,
+        generationConfig,
+        tools: tools,
+        toolConfig,
+      }
+    };
+
 
 		yield* this.performStreamRequest(
 			streamRequest,

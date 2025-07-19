@@ -151,35 +151,6 @@ export class GenerationConfigValidator {
 			}
 		}
 
-		// Add tools configuration if provided
-		if (options.tools && options.tools.length > 0) {
-			generationConfig.tools = options.tools.map((tool) => ({
-				functionDeclarations: [
-					{
-						name: tool.function.name,
-						description: tool.function.description,
-						parameters: tool.function.parameters
-					}
-				]
-			}));
-
-			// Handle tool choice
-			if (options.tool_choice) {
-				if (options.tool_choice === "auto") {
-					generationConfig.toolConfig = { functionCallingConfig: { mode: "AUTO" } };
-				} else if (options.tool_choice === "none") {
-					generationConfig.toolConfig = { functionCallingConfig: { mode: "NONE" } };
-				} else if (typeof options.tool_choice === "object" && options.tool_choice.function) {
-					generationConfig.toolConfig = {
-						functionCallingConfig: {
-							mode: "ANY",
-							allowedFunctionNames: [options.tool_choice.function.name]
-						}
-					};
-				}
-			}
-		}
-
 		const modelInfo = geminiCliModels[modelId];
 		const isThinkingModel = modelInfo?.thinking || false;
 
@@ -223,4 +194,50 @@ export class GenerationConfigValidator {
 		Object.keys(generationConfig).forEach((key) => generationConfig[key] === undefined && delete generationConfig[key]);
 		return generationConfig;
 	}
+
+  static createValidateTools(options: Partial<ChatCompletionRequest> = {}) {
+    const tools = [];
+    let toolConfig = {};
+    // Add tools configuration if provided
+    if (Array.isArray(options.tools) && options.tools.length > 0) {
+
+      const functionDeclarations = options.tools.map((tool) => {
+        let parameters = tool.function.parameters;
+        // filter for claude code like
+        if (parameters) {
+          const before = parameters;
+          parameters = Object.keys(parameters)
+            .filter((key) => !key.startsWith('$'))
+            .reduce((after, key) => {
+              after[key] = before[key];
+              return after;
+            }, {} as Record<string, unknown>);
+        }
+        return {
+          name: tool.function.name,
+          description: tool.function.description,
+          parameters
+        }
+      })
+
+      tools.push({ functionDeclarations })
+      // Handle tool choice
+      if (options.tool_choice) {
+        if (options.tool_choice === "auto") {
+          toolConfig = { functionCallingConfig: { mode: "AUTO" } };
+        } else if (options.tool_choice === "none") {
+          toolConfig = { functionCallingConfig: { mode: "NONE" } };
+        } else if (typeof options.tool_choice === "object" && options.tool_choice.function) {
+          toolConfig = {
+            functionCallingConfig: {
+              mode: "ANY",
+              allowedFunctionNames: [options.tool_choice.function.name]
+            }
+          };
+        }
+      }
+    }
+
+    return { tools, toolConfig }
+  }
 }

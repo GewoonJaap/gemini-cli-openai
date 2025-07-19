@@ -52,7 +52,7 @@ export interface Tool {
 	function: {
 		name: string;
 		description?: string;
-		parameters?: object;
+		parameters?: Record<string, unknown>;
 	};
 }
 
