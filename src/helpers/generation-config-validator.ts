@@ -195,49 +195,51 @@ export class GenerationConfigValidator {
 		return generationConfig;
 	}
 
-  static createValidateTools(options: Partial<ChatCompletionRequest> = {}) {
-    const tools = [];
-    let toolConfig = {};
-    // Add tools configuration if provided
-    if (Array.isArray(options.tools) && options.tools.length > 0) {
+	static createValidateTools(options: Partial<ChatCompletionRequest> = {}) {
+		const tools = [];
+		let toolConfig = {};
+		// Add tools configuration if provided
+		if (Array.isArray(options.tools) && options.tools.length > 0) {
+			const functionDeclarations = options.tools.map((tool) => {
+				let parameters = tool.function.parameters;
+				// Filter parameters for Claude-style compatibility by removing keys starting with '$'
+				if (parameters) {
+					const before = parameters;
+					parameters = Object.keys(parameters)
+						.filter((key) => !key.startsWith("$"))
+						.reduce(
+							(after, key) => {
+								after[key] = before[key];
+								return after;
+							},
+							{} as Record<string, unknown>
+						);
+				}
+				return {
+					name: tool.function.name,
+					description: tool.function.description,
+					parameters
+				};
+			});
 
-      const functionDeclarations = options.tools.map((tool) => {
-        let parameters = tool.function.parameters;
-        // Filter parameters for Claude-style compatibility by removing keys starting with '$'
-        if (parameters) {
-          const before = parameters;
-          parameters = Object.keys(parameters)
-            .filter((key) => !key.startsWith('$'))
-            .reduce((after, key) => {
-              after[key] = before[key];
-              return after;
-            }, {} as Record<string, unknown>);
-        }
-        return {
-          name: tool.function.name,
-          description: tool.function.description,
-          parameters
-        }
-      })
+			tools.push({ functionDeclarations });
+			// Handle tool choice
+			if (options.tool_choice) {
+				if (options.tool_choice === "auto") {
+					toolConfig = { functionCallingConfig: { mode: "AUTO" } };
+				} else if (options.tool_choice === "none") {
+					toolConfig = { functionCallingConfig: { mode: "NONE" } };
+				} else if (typeof options.tool_choice === "object" && options.tool_choice.function) {
+					toolConfig = {
+						functionCallingConfig: {
+							mode: "ANY",
+							allowedFunctionNames: [options.tool_choice.function.name]
+						}
+					};
+				}
+			}
+		}
 
-      tools.push({ functionDeclarations })
-      // Handle tool choice
-      if (options.tool_choice) {
-        if (options.tool_choice === "auto") {
-          toolConfig = { functionCallingConfig: { mode: "AUTO" } };
-        } else if (options.tool_choice === "none") {
-          toolConfig = { functionCallingConfig: { mode: "NONE" } };
-        } else if (typeof options.tool_choice === "object" && options.tool_choice.function) {
-          toolConfig = {
-            functionCallingConfig: {
-              mode: "ANY",
-              allowedFunctionNames: [options.tool_choice.function.name]
-            }
-          };
-        }
-      }
-    }
-
-    return { tools, toolConfig }
-  }
+		return { tools, toolConfig };
+	}
 }
