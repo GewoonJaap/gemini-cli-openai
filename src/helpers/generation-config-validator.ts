@@ -203,7 +203,7 @@ export class GenerationConfigValidator {
 
       const functionDeclarations = options.tools.map((tool) => {
         let parameters = tool.function.parameters;
-        // filter for claude code like
+        // Filter parameters for Claude-style compatibility by removing keys starting with '$'
         if (parameters) {
           const before = parameters;
           parameters = Object.keys(parameters)
