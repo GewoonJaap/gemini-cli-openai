@@ -22,7 +22,7 @@
     "hono": "^4.8.4"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250712.0",
+    "@cloudflare/workers-types": "^4.20250719.0",
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.31.0",
     "@types/node": "^24.0.13",
