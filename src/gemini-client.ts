@@ -349,8 +349,7 @@ export class GeminiApiClient {
 			modelId,
 			req,
 			isRealThinkingEnabled,
-			includeReasoning,
-			this.env
+			includeReasoning
 		);
 
 		const { tools, toolConfig } = GenerationConfigValidator.createValidateTools(req);
@@ -362,6 +361,8 @@ export class GeminiApiClient {
 			needsThinkingClose = streamThinkingAsContent; // Only need to close if we streamed as content
 		}
 
+		const safetySettings = GenerationConfigValidator.createSafetySettings(this.env);
+
 		const streamRequest = {
 			model: modelId,
 			project: projectId,
@@ -369,7 +370,8 @@ export class GeminiApiClient {
 				contents: contents,
 				generationConfig,
 				tools: tools,
-				toolConfig
+				toolConfig,
+				...(safetySettings.length > 0 && { safetySettings })
 			}
 		};
 
