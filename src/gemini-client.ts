@@ -361,19 +361,31 @@ export class GeminiApiClient {
 			needsThinkingClose = streamThinkingAsContent; // Only need to close if we streamed as content
 		}
 
-		const safetySettings = GenerationConfigValidator.createSafetySettings(this.env);
-
-		const streamRequest = {
+		const streamRequest: {
+			model: string;
+			project: string;
+			request: {
+				contents: unknown;
+				generationConfig: unknown;
+				tools: unknown;
+				toolConfig: unknown;
+				safetySettings?: unknown;
+			};
+		} = {
 			model: modelId,
 			project: projectId,
 			request: {
 				contents: contents,
 				generationConfig,
 				tools: tools,
-				toolConfig,
-				...(safetySettings.length > 0 && { safetySettings })
+				toolConfig
 			}
 		};
+
+		const safetySettings = GenerationConfigValidator.createSafetySettings(this.env);
+		if (safetySettings.length > 0) {
+			streamRequest.request.safetySettings = safetySettings;
+		}
 
 		yield* this.performStreamRequest(
 			streamRequest,
