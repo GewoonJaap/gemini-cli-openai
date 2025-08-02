@@ -126,8 +126,7 @@ export class GenerationConfigValidator {
 		modelId: string,
 		options: Partial<ChatCompletionRequest> = {},
 		isRealThinkingEnabled: boolean,
-		includeReasoning: boolean,
-		env?: Env
+		includeReasoning: boolean
 	): Record<string, unknown> {
 		const generationConfig: Record<string, unknown> = {
 			temperature: options.temperature ?? DEFAULT_TEMPERATURE,
@@ -141,14 +140,6 @@ export class GenerationConfigValidator {
 
 		if (options.response_format?.type === "json_object") {
 			generationConfig.responseMimeType = "application/json";
-		}
-
-		// Add safety settings if environment variables are provided
-		if (env) {
-			const safetySettings = this.createSafetySettings(env);
-			if (safetySettings.length > 0) {
-				generationConfig.safetySettings = safetySettings;
-			}
 		}
 
 		const modelInfo = geminiCliModels[modelId];
