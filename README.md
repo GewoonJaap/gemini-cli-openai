@@ -26,6 +26,7 @@ Transform Google's Gemini models into OpenAI-compatible endpoints using Cloudfla
 |----------|----------------|------------|------------------|-------------|
 | `gemini-2.5-pro` | 1M | 65K | ✅ | Latest Gemini 2.5 Pro model with reasoning capabilities |
 | `gemini-2.5-flash` | 1M | 65K | ✅ | Fast Gemini 2.5 Flash model with reasoning capabilities |
+| `gemini-2.5-flash-lite` | 1M | 65K | ✅ | Fast Gemini 2.5 Flash model with reasoning capabilities |
 
 > **Note:** Gemini 2.5 models have thinking enabled by default. The API automatically manages this:
 > - When real thinking is disabled (environment), thinking budget is set to 0 to disable it
