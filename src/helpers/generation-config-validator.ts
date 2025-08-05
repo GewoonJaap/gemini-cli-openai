@@ -259,14 +259,8 @@ export class GenerationConfigValidator {
 					if (tool.google_search) {
 						return { google_search: tool.google_search };
 					}
-					if (tool.code_execution) {
-						return { code_execution: tool.code_execution };
-					}
 					if (tool.url_context) {
 						return { url_context: tool.url_context };
-					}
-					if (tool.google_search_retrieval) {
-						return { google_search_retrieval: tool.google_search_retrieval };
 					}
 					return tool;
 				}),

@@ -8,7 +8,7 @@
     "format": "prettier --write src",
     "format:check": "prettier --check src",
     "build": "wrangler deploy --dry-run --outdir=dist",
-    "lint": "eslint --ext .ts src",
+    "lint": "eslint --ext .ts src && npm run tsc",
     "lint:fix": "eslint --ext .ts src --fix",
     "docker:build": "docker-compose build",
     "docker:dev": "docker-compose up --build",
@@ -16,7 +16,8 @@
     "docker:stop": "docker-compose down",
     "docker:clean": "docker-compose down -v && docker system prune -f",
     "docker:logs": "docker-compose logs -f gemini-worker",
-    "docker:shell": "docker-compose exec gemini-worker sh"
+    "docker:shell": "docker-compose exec gemini-worker sh",
+    "tsc": "tsc --noEmit --skipLibCheck"
   },
   "dependencies": {
     "hono": "^4.8.9"

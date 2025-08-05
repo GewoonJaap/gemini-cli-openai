@@ -18,13 +18,7 @@ import { GenerationConfigValidator } from "./helpers/generation-config-validator
 import { AutoModelSwitchingHelper } from "./helpers/auto-model-switching";
 import { NativeToolsManager } from "./helpers/native-tools-manager";
 import { CitationsProcessor } from "./helpers/citations-processor";
-import {
-	GeminiCodeExecutionResult,
-	GeminiExecutableCode,
-	GeminiUrlContextMetadata,
-	GroundingMetadata,
-	NativeToolsRequestParams
-} from "./types/native-tools";
+import { GeminiUrlContextMetadata, GroundingMetadata, NativeToolsRequestParams } from "./types/native-tools";
 
 // Gemini API response types
 interface GeminiCandidate {
@@ -67,8 +61,6 @@ export interface GeminiPart {
 		mimeType: string;
 		fileUri: string;
 	};
-	executable_code?: GeminiExecutableCode;
-	code_execution_result?: GeminiCodeExecutionResult;
 	url_context_metadata?: GeminiUrlContextMetadata;
 }
 
@@ -526,6 +518,7 @@ export class GeminiApiClient {
 		originalModel?: string,
 		nativeToolsManager?: NativeToolsManager
 	): AsyncGenerator<StreamChunk> {
+		console.log(JSON.stringify(streamRequest, null, 2));
 		const citationsProcessor = new CitationsProcessor(this.env);
 		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
 			method: "POST",
@@ -816,7 +809,6 @@ export class GeminiApiClient {
 	private extractNativeToolsParams(options?: Record<string, unknown>): NativeToolsRequestParams {
 		return {
 			enableSearch: this.extractBooleanParam(options, "enable_search"),
-			enableCodeExecution: this.extractBooleanParam(options, "enable_code_execution"),
 			enableUrlContext: this.extractBooleanParam(options, "enable_url_context"),
 			enableNativeTools: this.extractBooleanParam(options, "enable_native_tools"),
 			nativeToolsPriority: this.extractStringParam(

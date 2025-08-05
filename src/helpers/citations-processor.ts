@@ -100,7 +100,6 @@ export class CitationsProcessor {
 		return citedTextChunk;
 	}
 
-
 	/**
 	 * Extracts search queries that were used to generate the grounded response.
 	 */

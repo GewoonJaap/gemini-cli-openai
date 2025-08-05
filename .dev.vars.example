@@ -45,16 +45,11 @@ ENABLE_AUTO_MODEL_SWITCHING=true
 
 # Optional: Enable specific native tools (default: false)
 # ENABLE_GOOGLE_SEARCH=true
-# ENABLE_CODE_EXECUTION=true
 # ENABLE_URL_CONTEXT=true
 
 # Optional: Tool priority strategy (native_first, custom_first, user_choice)
 # Determines which tools to use when both native and custom tools are available.
 # GEMINI_TOOLS_PRIORITY=native_first
-
-# Optional: Special priority for code execution (default: true)
-# If true, code_execution tool takes precedence over other native tools due to mutual exclusivity.
-# CODE_EXECUTION_PRIORITY=true
 
 # Optional: Default behavior when no custom tools are provided in the request (default: true)
 # If true, native tools will be used by default.
@@ -74,11 +69,3 @@ ENABLE_AUTO_MODEL_SWITCHING=true
 
 # Optional: Include search entry point HTML (default: false)
 # INCLUDE_SEARCH_ENTRY_POINT=false
-
-# --- Legacy Support ---
-
-# Optional: Enable legacy google_search_retrieval for Gemini 1.5 (default: false)
-# ENABLE_LEGACY_GOOGLE_SEARCH_RETRIEVAL=false
-
-# Optional: Dynamic threshold for legacy search retrieval (default: 0.7)
-# GOOGLE_SEARCH_DYNAMIC_THRESHOLD=0.7

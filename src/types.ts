@@ -26,10 +26,8 @@ export interface Env {
 	// Native Tools Configuration
 	ENABLE_GEMINI_NATIVE_TOOLS?: string; // Enable native Gemini tools (default: false)
 	ENABLE_GOOGLE_SEARCH?: string; // Enable Google Search tool (default: false)
-	ENABLE_CODE_EXECUTION?: string; // Enable Code Execution tool (default: false)
 	ENABLE_URL_CONTEXT?: string; // Enable URL Context tool (default: false)
 	GEMINI_TOOLS_PRIORITY?: string; // Tool priority strategy (native_first, custom_first, user_choice)
-	CODE_EXECUTION_PRIORITY?: string; // Special priority for code execution (default: true)
 	DEFAULT_TO_NATIVE_TOOLS?: string; // Default behavior when no custom tools provided (default: true)
 	ALLOW_REQUEST_TOOL_CONTROL?: string; // Allow request-level tool control (default: true)
 
@@ -37,10 +35,6 @@ export interface Env {
 	ENABLE_INLINE_CITATIONS?: string; // Enable inline citations in responses (default: true)
 	INCLUDE_GROUNDING_METADATA?: string; // Include grounding metadata in responses (default: true)
 	INCLUDE_SEARCH_ENTRY_POINT?: string; // Include search entry point HTML (default: false)
-
-	// Legacy Support
-	ENABLE_LEGACY_GOOGLE_SEARCH_RETRIEVAL?: string; // Enable legacy google_search_retrieval for Gemini 1.5 (default: false)
-	GOOGLE_SEARCH_DYNAMIC_THRESHOLD?: string; // Dynamic threshold for legacy search retrieval (default: 0.7)
 }
 
 // --- OAuth2 Credentials Interface ---
@@ -91,7 +85,6 @@ export interface ChatCompletionRequest {
 	extra_body?: {
 		reasoning_effort?: EffortLevel;
 		enable_search?: boolean;
-		enable_code_execution?: boolean;
 		enable_url_context?: boolean;
 		enable_native_tools?: boolean;
 		native_tools_priority?: "native" | "custom" | "mixed";
@@ -99,7 +92,6 @@ export interface ChatCompletionRequest {
 	model_params?: {
 		reasoning_effort?: EffortLevel;
 		enable_search?: boolean;
-		enable_code_execution?: boolean;
 		enable_url_context?: boolean;
 		enable_native_tools?: boolean;
 		native_tools_priority?: "native" | "custom" | "mixed";
@@ -117,7 +109,6 @@ export interface ChatCompletionRequest {
 	};
 	// Native Tools flags
 	enable_search?: boolean;
-	enable_code_execution?: boolean;
 	enable_url_context?: boolean;
 	enable_native_tools?: boolean;
 	native_tools_priority?: "native" | "custom" | "mixed";

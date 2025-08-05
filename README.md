@@ -177,10 +177,8 @@ npm run dev
 | `ENABLE_AUTO_MODEL_SWITCHING` | Enable automatic fallback from pro to flash models on rate limits (set to `"true"`). |
 | `ENABLE_GEMINI_NATIVE_TOOLS` | Master switch to enable all native tools (set to `"true"`). |
 | `ENABLE_GOOGLE_SEARCH` | Enable Google Search native tool (set to `"true"`). |
-| `ENABLE_CODE_EXECUTION` | Enable Code Execution native tool (set to `"true"`). |
 | `ENABLE_URL_CONTEXT` | Enable URL Context native tool (set to `"true"`). |
 | `GEMINI_TOOLS_PRIORITY` | Set tool priority: `"native_first"` or `"custom_first"`. |
-| `CODE_EXECUTION_PRIORITY` | Give code execution priority over other tools (set to `"true"`). |
 | `ALLOW_REQUEST_TOOL_CONTROL` | Allow request parameters to override tool settings (set to `"false"` to disable). |
 | `ENABLE_INLINE_CITATIONS` | Inject markdown citations for search results (set to `"false"` to disable). |
 | `INCLUDE_GROUNDING_METADATA` | Include raw grounding metadata in the stream (set to `"false"` to disable). |
