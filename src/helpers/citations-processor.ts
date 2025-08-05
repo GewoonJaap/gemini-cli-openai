@@ -7,9 +7,53 @@ import { GroundingMetadata, CitationSource } from "../types/native-tools";
  */
 export class CitationsProcessor {
 	private enableInlineCitations: boolean;
+	private fullText = "";
+	private lastCitedText = "";
 
 	constructor(env: Env) {
 		this.enableInlineCitations = env.ENABLE_INLINE_CITATIONS === "true";
+	}
+
+	public processChunk(textChunk: string, metadata?: GroundingMetadata): string {
+		if (!this.enableInlineCitations) {
+			return textChunk;
+		}
+
+		this.fullText += textChunk;
+
+		let newCitedText = this.fullText;
+
+		if (metadata && metadata.groundingSupports && metadata.groundingChunks) {
+			const supports = [...metadata.groundingSupports].sort(
+				(a, b) => (b.segment?.endIndex ?? 0) - (a.segment?.endIndex ?? 0)
+			);
+
+			for (const support of supports) {
+				const endIndex = support.segment?.endIndex;
+				if (endIndex === undefined || !support.groundingChunkIndices?.length) {
+					continue;
+				}
+
+				const citationLinks = support.groundingChunkIndices
+					.map((i) => {
+						const uri = metadata.groundingChunks[i]?.web?.uri;
+						if (uri) {
+							return `[${i + 1}](${uri})`;
+						}
+						return null;
+					})
+					.filter(Boolean);
+
+				if (citationLinks.length > 0) {
+					const citationString = citationLinks.join(", ");
+					newCitedText = newCitedText.slice(0, endIndex) + citationString + newCitedText.slice(endIndex);
+				}
+			}
+		}
+
+		const newContent = newCitedText.substring(this.lastCitedText.length);
+		this.lastCitedText = newCitedText; // Always update lastCitedText with the fully cited text
+		return newContent;
 	}
 
 	/**
@@ -22,6 +66,9 @@ export class CitationsProcessor {
 			return text;
 		}
 
+		console.log(JSON.stringify(groundingMetadata, null, 2));
+		console.log("Processing citations in text:", text);
+
 		const supports = groundingMetadata.groundingSupports;
 		const chunks = groundingMetadata.groundingChunks;
 
@@ -29,27 +76,30 @@ export class CitationsProcessor {
 			return text;
 		}
 
-		// Sort supports by end_index in descending order to avoid shifting issues when inserting
-		const sortedSupports = supports.sort((a, b) => b.segment.endIndex - a.segment.endIndex);
+		// Sort supports by end_index in descending order to avoid shifting issues when inserting.
+		const sortedSupports = [...supports].sort((a, b) => (b.segment?.endIndex ?? 0) - (a.segment?.endIndex ?? 0));
 
 		let processedText = text;
 
 		for (const support of sortedSupports) {
-			const endIndex = support.segment.endIndex;
+			const endIndex = support.segment?.endIndex;
+			if (endIndex === undefined || !support.groundingChunkIndices?.length) {
+				continue;
+			}
 
-			if (support.groundingChunkIndices && support.groundingChunkIndices.length > 0) {
-				// Create citation string like [1](link1), [2](link2)
-				const citationLinks = support.groundingChunkIndices
-					.filter((i) => i < chunks.length)
-					.map((i) => {
-						const chunk = chunks[i];
-						return `[${i + 1}](${chunk.web.uri})`;
-					});
+			const citationLinks = support.groundingChunkIndices
+				.map((i) => {
+					const uri = chunks[i]?.web?.uri;
+					if (uri) {
+						return `[${i + 1}](${uri})`;
+					}
+					return null;
+				})
+				.filter(Boolean);
 
-				if (citationLinks.length > 0) {
-					const citationString = citationLinks.join(", ");
-					processedText = processedText.slice(0, endIndex) + citationString + processedText.slice(endIndex);
-				}
+			if (citationLinks.length > 0) {
+				const citationString = citationLinks.join(", ");
+				processedText = processedText.slice(0, endIndex) + citationString + processedText.slice(endIndex);
 			}
 		}
 

@@ -17,6 +17,7 @@ import { validateImageUrl } from "./utils/image-utils";
 import { GenerationConfigValidator } from "./helpers/generation-config-validator";
 import { AutoModelSwitchingHelper } from "./helpers/auto-model-switching";
 import { NativeToolsManager } from "./helpers/native-tools-manager";
+import { CitationsProcessor } from "./helpers/citations-processor";
 import {
 	GeminiCodeExecutionResult,
 	GeminiExecutableCode,
@@ -525,6 +526,7 @@ export class GeminiApiClient {
 		originalModel?: string,
 		nativeToolsManager?: NativeToolsManager
 	): AsyncGenerator<StreamChunk> {
+		const citationsProcessor = new CitationsProcessor(this.env);
 		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
 			method: "POST",
 			headers: {
@@ -686,10 +688,10 @@ export class GeminiApiClient {
 						}
 
 						let processedText = part.text;
-						if (nativeToolsManager && jsonData.response?.candidates?.[0]?.groundingMetadata) {
-							processedText = nativeToolsManager.processCitationsInText(
+						if (nativeToolsManager) {
+							processedText = citationsProcessor.processChunk(
 								part.text,
-								jsonData.response.candidates[0].groundingMetadata
+								jsonData.response?.candidates?.[0]?.groundingMetadata
 							);
 						}
 						yield { type: "text", data: processedText };
