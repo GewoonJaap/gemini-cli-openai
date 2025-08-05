@@ -154,42 +154,70 @@ npm run dev
 
 ### Environment Variables
 
+#### Core Configuration
+
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GCP_SERVICE_ACCOUNT` | ✅ | OAuth2 credentials JSON string |
-| `GEMINI_PROJECT_ID` | ❌ | Google Cloud Project ID (auto-discovered if not set) |
-| `OPENAI_API_KEY` | ❌ | API key for authentication (if not set, API is public) |
-| `ENABLE_FAKE_THINKING` | ❌ | Enable synthetic thinking output for thinking models (set to "true" to enable) |
-| `ENABLE_REAL_THINKING` | ❌ | Enable real Gemini thinking output (set to "true" to enable) |
-| `STREAM_THINKING_AS_CONTENT` | ❌ | Stream thinking as content with `<thinking>` tags (DeepSeek R1 style) |
-| `ENABLE_AUTO_MODEL_SWITCHING` | ❌ | Enable automatic fallback from pro to flash models on rate limits (set to "true" to enable) |
-| `GEMINI_MODERATION_HARASSMENT_THRESHOLD` | ❌ | Sets the moderation threshold for harassment content (e.g., `BLOCK_NONE`, `BLOCK_FEW`, `BLOCK_SOME`, `BLOCK_ONLY_HIGH`, `HARM_BLOCK_THRESHOLD_UNSPECIFIED`) |
-| `GEMINI_MODERATION_HATE_SPEECH_THRESHOLD` | ❌ | Sets the moderation threshold for hate speech content (e.g., `BLOCK_NONE`, `BLOCK_FEW`, `BLOCK_SOME`, `BLOCK_ONLY_HIGH`, `HARM_BLOCK_THRESHOLD_UNSPECIFIED`) |
-| `GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD` | ❌ | Sets the moderation threshold for sexually explicit content (e.g., `BLOCK_NONE`, `BLOCK_FEW`, `BLOCK_SOME`, `BLOCK_ONLY_HIGH`, `HARM_BLOCK_THRESHOLD_UNSPECIFIED`) |
-| `GEMINI_MODERATION_DANGEROUS_CONTENT_THRESHOLD` | ❌ | Sets the moderation threshold for dangerous content (e.g., `BLOCK_NONE`, `BLOCK_FEW`, `BLOCK_SOME`, `BLOCK_ONLY_HIGH`, `HARM_BLOCK_THRESHOLD_UNSPECIFIED`) |
+| `GCP_SERVICE_ACCOUNT` | ✅ | OAuth2 credentials JSON string. |
+| `GEMINI_PROJECT_ID` | ❌ | Google Cloud Project ID (auto-discovered if not set). |
+| `OPENAI_API_KEY` | ❌ | API key for authentication. If not set, the API is public. |
+
+#### Thinking & Reasoning
+
+| Variable | Description |
+|----------|-------------|
+| `ENABLE_FAKE_THINKING` | Enable synthetic thinking output for testing (set to `"true"`). |
+| `ENABLE_REAL_THINKING` | Enable real Gemini thinking output (set to `"true"`). |
+| `STREAM_THINKING_AS_CONTENT` | Stream thinking as content with `<thinking>` tags (DeepSeek R1 style). |
+
+#### Model & Feature Flags
+
+| Variable | Description |
+|----------|-------------|
+| `ENABLE_AUTO_MODEL_SWITCHING` | Enable automatic fallback from pro to flash models on rate limits (set to `"true"`). |
+| `ENABLE_GEMINI_NATIVE_TOOLS` | Master switch to enable all native tools (set to `"true"`). |
+| `ENABLE_GOOGLE_SEARCH` | Enable Google Search native tool (set to `"true"`). |
+| `ENABLE_CODE_EXECUTION` | Enable Code Execution native tool (set to `"true"`). |
+| `ENABLE_URL_CONTEXT` | Enable URL Context native tool (set to `"true"`). |
+| `GEMINI_TOOLS_PRIORITY` | Set tool priority: `"native_first"` or `"custom_first"`. |
+| `CODE_EXECUTION_PRIORITY` | Give code execution priority over other tools (set to `"true"`). |
+| `ALLOW_REQUEST_TOOL_CONTROL` | Allow request parameters to override tool settings (set to `"false"` to disable). |
+| `ENABLE_INLINE_CITATIONS` | Inject markdown citations for search results (set to `"false"` to disable). |
+| `INCLUDE_GROUNDING_METADATA` | Include raw grounding metadata in the stream (set to `"false"` to disable). |
+
+#### Content Safety
+
+| Variable | Description |
+|----------|-------------|
+| `GEMINI_MODERATION_HARASSMENT_THRESHOLD` | Sets the moderation threshold for harassment content. |
+| `GEMINI_MODERATION_HATE_SPEECH_THRESHOLD` | Sets the moderation threshold for hate speech content. |
+| `GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD` | Sets the moderation threshold for sexually explicit content. |
+| `GEMINI_MODERATION_DANGEROUS_CONTENT_THRESHOLD` | Sets the moderation threshold for dangerous content. |
+
+*For safety thresholds, valid options are: `BLOCK_NONE`, `BLOCK_FEW`, `BLOCK_SOME`, `BLOCK_ONLY_HIGH`, `HARM_BLOCK_THRESHOLD_UNSPECIFIED`.*
 
 **Authentication Security:**
-- When `OPENAI_API_KEY` is set, all `/v1/*` endpoints require authentication
-- Clients must include the header: `Authorization: Bearer <your-api-key>`
-- Without this environment variable, the API is publicly accessible
-- Recommended format: `sk-` followed by a random string (e.g., `sk-1234567890abcdef...`)
+- When `OPENAI_API_KEY` is set, all `/v1/*` endpoints require authentication.
+- Clients must include the header: `Authorization: Bearer <your-api-key>`.
+- Without this environment variable, the API is publicly accessible.
+- Recommended format: `sk-` followed by a random string (e.g., `sk-1234567890abcdef...`).
 
 **Thinking Models:**
-- **Fake Thinking**: When `ENABLE_FAKE_THINKING` is set to "true", models marked with `thinking: true` will generate synthetic reasoning text before their actual response
-- **Real Thinking**: When `ENABLE_REAL_THINKING` is set to "true", requests with `include_reasoning: true` will use Gemini's native thinking capabilities
-- Real thinking provides genuine reasoning from Gemini and requires thinking-capable models (like Gemini 2.5 Pro/Flash)
-- You can control the reasoning token budget with the `thinking_budget` parameter
-- By default, reasoning output is streamed as `reasoning` chunks in the OpenAI-compatible response format
-- When `STREAM_THINKING_AS_CONTENT` is also set to "true", reasoning will be streamed as regular content wrapped in `<thinking></thinking>` tags (DeepSeek R1 style)
-- **Optimized UX**: The `</thinking>` tag is only sent when the actual LLM response begins, eliminating awkward pauses between thinking and response
-- If neither thinking mode is enabled, thinking models will behave like regular models
+- **Fake Thinking**: When `ENABLE_FAKE_THINKING` is set to `"true"`, models marked with `thinking: true` will generate synthetic reasoning text before their actual response.
+- **Real Thinking**: When `ENABLE_REAL_THINKING` is set to `"true"`, requests with `include_reasoning: true` will use Gemini's native thinking capabilities.
+- Real thinking provides genuine reasoning from Gemini and requires thinking-capable models (like Gemini 2.5 Pro/Flash).
+- You can control the reasoning token budget with the `thinking_budget` parameter.
+- By default, reasoning output is streamed as `reasoning` chunks in the OpenAI-compatible response format.
+- When `STREAM_THINKING_AS_CONTENT` is also set to `"true"`, reasoning will be streamed as regular content wrapped in `<thinking></thinking>` tags (DeepSeek R1 style).
+- **Optimized UX**: The `</thinking>` tag is only sent when the actual LLM response begins, eliminating awkward pauses between thinking and response.
+- If neither thinking mode is enabled, thinking models will behave like regular models.
 
 **Auto Model Switching:**
-- When `ENABLE_AUTO_MODEL_SWITCHING` is set to "true", the system will automatically fall back from `gemini-2.5-pro` to `gemini-2.5-flash` when encountering rate limit errors (HTTP 429 or 503)
-- This provides seamless continuity when the Pro model quota is exhausted
-- The fallback is indicated in the response with a notification message
-- Only applies to supported model pairs (currently: pro → flash)
-- Works for both streaming and non-streaming requests
+- When `ENABLE_AUTO_MODEL_SWITCHING` is set to `"true"`, the system will automatically fall back from `gemini-2.5-pro` to `gemini-2.5-flash` when encountering rate limit errors (HTTP 429 or 503).
+- This provides seamless continuity when the Pro model quota is exhausted.
+- The fallback is indicated in the response with a notification message.
+- Only applies to supported model pairs (currently: pro → flash).
+- Works for both streaming and non-streaming requests.
 
 ### KV Namespaces
 

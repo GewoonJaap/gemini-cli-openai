@@ -1,4 +1,5 @@
 import { StreamChunk, ReasoningData, GeminiFunctionCall, UsageData } from "./types";
+import { NativeToolResponse } from "./types/native-tools";
 import { OPENAI_CHAT_COMPLETION_OBJECT } from "./config";
 
 // OpenAI API interfaces
@@ -26,6 +27,8 @@ interface OpenAIDelta {
 	reasoning?: string;
 	reasoning_content?: string | null;
 	tool_calls?: OpenAIToolCall[];
+	native_tool_calls?: NativeToolResponse[];
+	grounding?: unknown;
 }
 
 interface OpenAIChunk {
@@ -70,6 +73,9 @@ function isGeminiFunctionCall(data: unknown): data is GeminiFunctionCall {
 function isUsageData(data: unknown): data is UsageData {
 	return typeof data === "object" && data !== null && "inputTokens" in data && "outputTokens" in data;
 }
+function isNativeToolResponse(data: unknown): data is NativeToolResponse {
+	return typeof data === "object" && data !== null && "type" in data && "data" in data;
+}
 
 /**
  * Creates a TransformStream to convert Gemini's output chunks
@@ -86,139 +92,72 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 
 	return new TransformStream({
 		transform(chunk, controller) {
-			if (chunk.type === "text" && chunk.data && typeof chunk.data === "string") {
-				const delta: OpenAIDelta = {
-					content: chunk.data
-				};
-				if (firstChunk) {
-					delta.role = "assistant";
-					firstChunk = false;
-				}
+			const delta: OpenAIDelta = {};
+			let openAIChunk: OpenAIChunk | null = null;
 
-				const openAIChunk: OpenAIChunk = {
-					id: chatID,
-					object: OPENAI_CHAT_COMPLETION_OBJECT,
-					created: creationTime,
-					model: model,
-					choices: [
-						{
-							index: 0,
-							delta: delta,
-							finish_reason: null,
-							logprobs: null,
-							matched_stop: null
+			switch (chunk.type) {
+				case "text":
+				case "thinking_content":
+					if (typeof chunk.data === "string") {
+						delta.content = chunk.data;
+						if (firstChunk) {
+							delta.role = "assistant";
+							firstChunk = false;
 						}
-					],
-					usage: null
-				};
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
-			} else if (chunk.type === "thinking_content" && chunk.data && typeof chunk.data === "string") {
-				// Handle thinking content streamed as regular content (DeepSeek R1 style)
-				const delta: OpenAIDelta = {
-					content: chunk.data,
-					reasoning_content: null
-				};
-				if (firstChunk) {
-					delta.role = "assistant";
-					firstChunk = false;
-				}
-
-				const openAIChunk: OpenAIChunk = {
-					id: chatID,
-					object: OPENAI_CHAT_COMPLETION_OBJECT,
-					created: creationTime,
-					model: model,
-					choices: [
-						{
-							index: 0,
-							delta: delta,
-							finish_reason: null,
-							logprobs: null,
-							matched_stop: null
-						}
-					],
-					usage: null
-				};
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
-			} else if (chunk.type === "real_thinking" && chunk.data && typeof chunk.data === "string") {
-				// Handle real thinking content from Gemini
-				const delta: OpenAIDelta = {
-					reasoning: chunk.data,
-					reasoning_content: null
-				};
-
-				const openAIChunk: OpenAIChunk = {
-					id: chatID,
-					object: OPENAI_CHAT_COMPLETION_OBJECT,
-					created: creationTime,
-					model: model,
-					choices: [
-						{
-							index: 0,
-							delta: delta,
-							finish_reason: null,
-							logprobs: null,
-							matched_stop: null
-						}
-					],
-					usage: null
-				};
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
-			} else if (chunk.type === "reasoning" && isReasoningData(chunk.data)) {
-				// Handle thinking/reasoning chunks (original format)
-				const delta: OpenAIDelta = {
-					reasoning: chunk.data.reasoning,
-					reasoning_content: null
-				};
-
-				const openAIChunk: OpenAIChunk = {
-					id: chatID,
-					object: OPENAI_CHAT_COMPLETION_OBJECT,
-					created: creationTime,
-					model: model,
-					choices: [
-						{
-							index: 0,
-							delta: delta,
-							finish_reason: null,
-							logprobs: null,
-							matched_stop: null
-						}
-					],
-					usage: null
-				};
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
-			} else if (chunk.type === "tool_code" && isGeminiFunctionCall(chunk.data)) {
-				const toolData = chunk.data;
-				const toolCode = toolData.args;
-				const functionName = toolData.name;
-
-				if (functionName) {
-					toolCallName = functionName;
-					toolCallId = `call_${crypto.randomUUID()}`;
-				}
-
-				const delta: OpenAIDelta = {
-					tool_calls: [
-						{
-							index: 0,
-							id: toolCallId || "",
-							type: "function",
-							function: {
-								name: toolCallName || "",
-								arguments: JSON.stringify(toolCode)
+					}
+					break;
+				case "real_thinking":
+					if (typeof chunk.data === "string") {
+						delta.reasoning = chunk.data;
+					}
+					break;
+				case "reasoning":
+					if (isReasoningData(chunk.data)) {
+						delta.reasoning = chunk.data.reasoning;
+					}
+					break;
+				case "tool_code":
+					if (isGeminiFunctionCall(chunk.data)) {
+						const toolData = chunk.data;
+						toolCallName = toolData.name;
+						toolCallId = `call_${crypto.randomUUID()}`;
+						delta.tool_calls = [
+							{
+								index: 0,
+								id: toolCallId,
+								type: "function",
+								function: {
+									name: toolCallName,
+									arguments: JSON.stringify(toolData.args)
+								}
 							}
+						];
+						if (firstChunk) {
+							delta.role = "assistant";
+							delta.content = null;
+							firstChunk = false;
 						}
-					]
-				};
+					}
+					break;
+				case "native_tool":
+					if (isNativeToolResponse(chunk.data)) {
+						delta.native_tool_calls = [chunk.data];
+					}
+					break;
+				case "grounding_metadata":
+					if (chunk.data) {
+						delta.grounding = chunk.data;
+					}
+					break;
+				case "usage":
+					if (isUsageData(chunk.data)) {
+						usageData = chunk.data;
+					}
+					return; // Don't send a chunk for usage data
+			}
 
-				if (firstChunk) {
-					delta.role = "assistant";
-					delta.content = null; // Important: content must be null when tool_calls are present
-					firstChunk = false;
-				}
-
-				const openAIChunk: OpenAIChunk = {
+			if (Object.keys(delta).length > 0) {
+				openAIChunk = {
 					id: chatID,
 					object: OPENAI_CHAT_COMPLETION_OBJECT,
 					created: creationTime,
@@ -235,13 +174,9 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 					usage: null
 				};
 				controller.enqueue(encoder.encode(`data: ${JSON.stringify(openAIChunk)}\n\n`));
-			} else if (chunk.type === "usage" && isUsageData(chunk.data)) {
-				// Capture usage data to include in the final chunk
-				usageData = chunk.data;
 			}
 		},
 		flush(controller) {
-			// Send the final chunk with the finish reason and usage data if available.
 			const finishReason = toolCallId ? "tool_calls" : "stop";
 			const finalChunk: OpenAIFinalChunk = {
 				id: chatID,
@@ -251,7 +186,6 @@ export function createOpenAIStreamTransformer(model: string): TransformStream<St
 				choices: [{ index: 0, delta: {}, finish_reason: finishReason }]
 			};
 
-			// Include usage data if available
 			if (usageData) {
 				finalChunk.usage = {
 					prompt_tokens: usageData.inputTokens,

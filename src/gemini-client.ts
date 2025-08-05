@@ -16,12 +16,21 @@ import { geminiCliModels } from "./models";
 import { validateImageUrl } from "./utils/image-utils";
 import { GenerationConfigValidator } from "./helpers/generation-config-validator";
 import { AutoModelSwitchingHelper } from "./helpers/auto-model-switching";
+import { NativeToolsManager } from "./helpers/native-tools-manager";
+import {
+	GeminiCodeExecutionResult,
+	GeminiExecutableCode,
+	GeminiUrlContextMetadata,
+	GroundingMetadata,
+	NativeToolsRequestParams
+} from "./types/native-tools";
 
 // Gemini API response types
 interface GeminiCandidate {
 	content?: {
 		parts?: Array<{ text?: string }>;
 	};
+	groundingMetadata?: GroundingMetadata;
 }
 
 interface GeminiUsageMetadata {
@@ -36,7 +45,7 @@ interface GeminiResponse {
 	};
 }
 
-interface GeminiPart {
+export interface GeminiPart {
 	text?: string;
 	thought?: boolean; // For real thinking chunks from Gemini
 	functionCall?: {
@@ -57,6 +66,9 @@ interface GeminiPart {
 		mimeType: string;
 		fileUri: string;
 	};
+	executable_code?: GeminiExecutableCode;
+	code_execution_result?: GeminiCodeExecutionResult;
+	url_context_metadata?: GeminiUrlContextMetadata;
 }
 
 // Message content types - keeping only the local ones needed
@@ -312,7 +324,7 @@ export class GeminiApiClient {
 			response_format?: {
 				type: "text" | "json_object";
 			};
-		}
+		} & NativeToolsRequestParams
 	): AsyncGenerator<StreamChunk> {
 		await this.authManager.initializeAuth();
 		const projectId = await this.discoverProjectId();
@@ -352,7 +364,16 @@ export class GeminiApiClient {
 			includeReasoning
 		);
 
-		const { tools, toolConfig } = GenerationConfigValidator.createValidateTools(req);
+		// Native tools integration
+		const nativeToolsManager = new NativeToolsManager(this.env);
+		const nativeToolsParams = this.extractNativeToolsParams(options as Record<string, unknown>);
+		const toolConfig = nativeToolsManager.determineToolConfiguration(options?.tools || [], nativeToolsParams, modelId);
+
+		// Configure request based on tool strategy
+		const { tools, toolConfig: finalToolConfig } = GenerationConfigValidator.createFinalToolConfiguration(
+			toolConfig,
+			options
+		);
 
 		// For thinking models with fake thinking (fallback when real thinking is not enabled or not requested)
 		let needsThinkingClose = false;
@@ -378,7 +399,7 @@ export class GeminiApiClient {
 				contents: contents,
 				generationConfig,
 				tools: tools,
-				toolConfig
+				toolConfig: finalToolConfig
 			}
 		};
 
@@ -392,7 +413,8 @@ export class GeminiApiClient {
 			needsThinkingClose,
 			false,
 			includeReasoning && streamThinkingAsContent,
-			modelId
+			modelId,
+			nativeToolsManager
 		);
 	}
 
@@ -500,7 +522,8 @@ export class GeminiApiClient {
 		needsThinkingClose: boolean = false,
 		isRetry: boolean = false,
 		realThinkingAsContent: boolean = false,
-		originalModel?: string
+		originalModel?: string,
+		nativeToolsManager?: NativeToolsManager
 	): AsyncGenerator<StreamChunk> {
 		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
 			method: "POST",
@@ -516,7 +539,14 @@ export class GeminiApiClient {
 				console.log("Got 401 error in stream request, clearing token cache and retrying...");
 				await this.authManager.clearTokenCache();
 				await this.authManager.initializeAuth();
-				yield* this.performStreamRequest(streamRequest, needsThinkingClose, true, realThinkingAsContent, originalModel); // Retry once
+				yield* this.performStreamRequest(
+					streamRequest,
+					needsThinkingClose,
+					true,
+					realThinkingAsContent,
+					originalModel,
+					nativeToolsManager
+				); // Retry once
 				return;
 			}
 
@@ -545,7 +575,8 @@ export class GeminiApiClient {
 						needsThinkingClose,
 						true,
 						realThinkingAsContent,
-						originalModel
+						originalModel,
+						nativeToolsManager
 					);
 					return;
 				}
@@ -654,7 +685,14 @@ export class GeminiApiClient {
 							hasClosedThinking = true;
 						}
 
-						yield { type: "text", data: part.text };
+						let processedText = part.text;
+						if (nativeToolsManager && jsonData.response?.candidates?.[0]?.groundingMetadata) {
+							processedText = nativeToolsManager.processCitationsInText(
+								part.text,
+								jsonData.response.candidates[0].groundingMetadata
+							);
+						}
+						yield { type: "text", data: processedText };
 					}
 					// Handle function calls from Gemini
 					else if (part.functionCall) {
@@ -717,7 +755,7 @@ export class GeminiApiClient {
 			response_format?: {
 				type: "text" | "json_object";
 			};
-		}
+		} & NativeToolsRequestParams
 	): Promise<{
 		content: string;
 		usage?: UsageData;
@@ -771,5 +809,42 @@ export class GeminiApiClient {
 			// Re-throw if not a rate limit error or fallback not available
 			throw error;
 		}
+	}
+
+	private extractNativeToolsParams(options?: Record<string, unknown>): NativeToolsRequestParams {
+		return {
+			enableSearch: this.extractBooleanParam(options, "enable_search"),
+			enableCodeExecution: this.extractBooleanParam(options, "enable_code_execution"),
+			enableUrlContext: this.extractBooleanParam(options, "enable_url_context"),
+			enableNativeTools: this.extractBooleanParam(options, "enable_native_tools"),
+			nativeToolsPriority: this.extractStringParam(
+				options,
+				"native_tools_priority",
+				(v): v is "native" | "custom" | "mixed" => ["native", "custom", "mixed"].includes(v)
+			)
+		};
+	}
+
+	private extractBooleanParam(options: Record<string, unknown> | undefined, key: string): boolean | undefined {
+		const value =
+			options?.[key] ??
+			(options?.extra_body as Record<string, unknown>)?.[key] ??
+			(options?.model_params as Record<string, unknown>)?.[key];
+		return typeof value === "boolean" ? value : undefined;
+	}
+
+	private extractStringParam<T extends string>(
+		options: Record<string, unknown> | undefined,
+		key: string,
+		guard: (v: string) => v is T
+	): T | undefined {
+		const value =
+			options?.[key] ??
+			(options?.extra_body as Record<string, unknown>)?.[key] ??
+			(options?.model_params as Record<string, unknown>)?.[key];
+		if (typeof value === "string" && guard(value)) {
+			return value;
+		}
+		return undefined;
 	}
 }

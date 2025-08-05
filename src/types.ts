@@ -1,3 +1,5 @@
+import { NativeToolResponse } from "./types/native-tools";
+
 // --- Safety Threshold Types ---
 export type SafetyThreshold =
 	| "BLOCK_NONE"
@@ -20,6 +22,25 @@ export interface Env {
 	GEMINI_MODERATION_HATE_SPEECH_THRESHOLD?: SafetyThreshold;
 	GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD?: SafetyThreshold;
 	GEMINI_MODERATION_DANGEROUS_CONTENT_THRESHOLD?: SafetyThreshold;
+
+	// Native Tools Configuration
+	ENABLE_GEMINI_NATIVE_TOOLS?: string; // Enable native Gemini tools (default: false)
+	ENABLE_GOOGLE_SEARCH?: string; // Enable Google Search tool (default: false)
+	ENABLE_CODE_EXECUTION?: string; // Enable Code Execution tool (default: false)
+	ENABLE_URL_CONTEXT?: string; // Enable URL Context tool (default: false)
+	GEMINI_TOOLS_PRIORITY?: string; // Tool priority strategy (native_first, custom_first, user_choice)
+	CODE_EXECUTION_PRIORITY?: string; // Special priority for code execution (default: true)
+	DEFAULT_TO_NATIVE_TOOLS?: string; // Default behavior when no custom tools provided (default: true)
+	ALLOW_REQUEST_TOOL_CONTROL?: string; // Allow request-level tool control (default: true)
+
+	// Citations and Grounding Configuration
+	ENABLE_INLINE_CITATIONS?: string; // Enable inline citations in responses (default: true)
+	INCLUDE_GROUNDING_METADATA?: string; // Include grounding metadata in responses (default: true)
+	INCLUDE_SEARCH_ENTRY_POINT?: string; // Include search entry point HTML (default: false)
+
+	// Legacy Support
+	ENABLE_LEGACY_GOOGLE_SEARCH_RETRIEVAL?: string; // Enable legacy google_search_retrieval for Gemini 1.5 (default: false)
+	GOOGLE_SEARCH_DYNAMIC_THRESHOLD?: string; // Dynamic threshold for legacy search retrieval (default: 0.7)
 }
 
 // --- OAuth2 Credentials Interface ---
@@ -69,9 +90,19 @@ export interface ChatCompletionRequest {
 	// Support for common custom parameter locations
 	extra_body?: {
 		reasoning_effort?: EffortLevel;
+		enable_search?: boolean;
+		enable_code_execution?: boolean;
+		enable_url_context?: boolean;
+		enable_native_tools?: boolean;
+		native_tools_priority?: "native" | "custom" | "mixed";
 	};
 	model_params?: {
 		reasoning_effort?: EffortLevel;
+		enable_search?: boolean;
+		enable_code_execution?: boolean;
+		enable_url_context?: boolean;
+		enable_native_tools?: boolean;
+		native_tools_priority?: "native" | "custom" | "mixed";
 	};
 	// Newly added OpenAI parameters
 	max_tokens?: number;
@@ -84,6 +115,12 @@ export interface ChatCompletionRequest {
 	response_format?: {
 		type: "text" | "json_object";
 	};
+	// Native Tools flags
+	enable_search?: boolean;
+	enable_code_execution?: boolean;
+	enable_url_context?: boolean;
+	enable_native_tools?: boolean;
+	native_tools_priority?: "native" | "custom" | "mixed";
 }
 
 export interface ToolCall {
@@ -158,6 +195,14 @@ export interface ReasoningData {
 
 // --- Stream Chunk Types ---
 export interface StreamChunk {
-	type: "text" | "usage" | "reasoning" | "thinking_content" | "real_thinking" | "tool_code";
-	data: string | UsageData | ReasoningData | GeminiFunctionCall;
+	type:
+		| "text"
+		| "usage"
+		| "reasoning"
+		| "thinking_content"
+		| "real_thinking"
+		| "tool_code"
+		| "native_tool"
+		| "grounding_metadata";
+	data: string | UsageData | ReasoningData | GeminiFunctionCall | NativeToolResponse;
 }

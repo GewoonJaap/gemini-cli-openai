@@ -6,6 +6,7 @@ import {
 	GEMINI_SAFETY_CATEGORIES
 } from "../constants";
 import { ChatCompletionRequest, Env, EffortLevel, SafetyThreshold } from "../types";
+import { NativeToolsConfiguration } from "../types/native-tools";
 
 /**
  * Helper class to validate and correct generation configurations for different Gemini models.
@@ -232,5 +233,48 @@ export class GenerationConfigValidator {
 		}
 
 		return { tools, toolConfig };
+	}
+	static createFinalToolConfiguration(
+		config: NativeToolsConfiguration,
+		options: Partial<ChatCompletionRequest> = {}
+	): {
+		tools: unknown[] | undefined;
+		toolConfig: unknown | undefined;
+	} {
+		if (config.useCustomTools && config.customTools && config.customTools.length > 0) {
+			const { toolConfig } = this.createValidateTools(options);
+			return {
+				tools: [
+					{
+						functionDeclarations: config.customTools.map((t) => t.function)
+					}
+				],
+				toolConfig: toolConfig
+			};
+		}
+
+		if (config.useNativeTools && config.nativeTools && config.nativeTools.length > 0) {
+			return {
+				tools: config.nativeTools.map((tool) => {
+					if (tool.google_search) {
+						return { google_search: tool.google_search };
+					}
+					if (tool.code_execution) {
+						return { code_execution: tool.code_execution };
+					}
+					if (tool.url_context) {
+						return { url_context: tool.url_context };
+					}
+					if (tool.google_search_retrieval) {
+						return { google_search_retrieval: tool.google_search_retrieval };
+					}
+					return tool;
+				}),
+				toolConfig: undefined // Native tools don't use toolConfig in the same way
+			};
+		}
+
+		// If no tools are enabled or the tool lists are empty, return undefined
+		return { tools: undefined, toolConfig: undefined };
 	}
 }
