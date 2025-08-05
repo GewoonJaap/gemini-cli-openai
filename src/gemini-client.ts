@@ -371,7 +371,7 @@ export class GeminiApiClient {
 		// For thinking models with fake thinking (fallback when real thinking is not enabled or not requested)
 		let needsThinkingClose = false;
 		if (isThinkingModel && isFakeThinkingEnabled && !includeReasoning) {
-			yield* this.generateReasoningOutput(modelId, messages, streamThinkingAsContent);
+			yield* this.generateReasoningOutput(messages, streamThinkingAsContent);
 			needsThinkingClose = streamThinkingAsContent; // Only need to close if we streamed as content
 		}
 
@@ -415,7 +415,6 @@ export class GeminiApiClient {
 	 * Generates reasoning output for thinking models.
 	 */
 	private async *generateReasoningOutput(
-		modelId: string,
 		messages: ChatMessage[],
 		streamAsContent: boolean = false
 	): AsyncGenerator<StreamChunk> {

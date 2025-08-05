@@ -15,7 +15,15 @@ const compat = new FlatCompat({
 
 export default defineConfig([{
     extends: compat.extends("plugin:@typescript-eslint/recommended"),
-
+    rules: {
+        "no-unused-vars": "off", // Disable the base rule
+        "@typescript-eslint/no-unused-vars": ["error", {
+            "args": "all", // Flag all unused arguments
+            "argsIgnorePattern": "^$", // Do not ignore any arguments
+            "varsIgnorePattern": "^$", // Do not ignore any variables
+            "caughtErrorsIgnorePattern": "^$" // Do not ignore caught errors
+        }]
+    },
     languageOptions: {
         parser: tsParser,
         ecmaVersion: 2021,
