@@ -7,7 +7,6 @@ import { GroundingMetadata, CitationSource } from "../types/native-tools";
  */
 export class CitationsProcessor {
 	private enableInlineCitations: boolean;
-	private fullText = ""; // This will now store the full text *with* citations
 
 	constructor(env: Env) {
 		this.enableInlineCitations = env.ENABLE_INLINE_CITATIONS === "true";
@@ -93,10 +92,6 @@ export class CitationsProcessor {
 				}
 			}
 		}
-
-		// Append the citedTextChunk to the fullText
-		this.fullText += citedTextChunk;
-
 		return citedTextChunk;
 	}
 

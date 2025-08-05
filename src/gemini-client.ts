@@ -517,7 +517,6 @@ export class GeminiApiClient {
 		originalModel?: string,
 		nativeToolsManager?: NativeToolsManager
 	): AsyncGenerator<StreamChunk> {
-		console.log(JSON.stringify(streamRequest, null, 2));
 		const citationsProcessor = new CitationsProcessor(this.env);
 		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
 			method: "POST",
