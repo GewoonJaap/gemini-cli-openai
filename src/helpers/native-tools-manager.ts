@@ -112,8 +112,7 @@ export class NativeToolsManager {
 	 * Processes text to add inline citations if enabled.
 	 */
 	public processCitationsInText(text: string, groundingMetadata?: GroundingMetadata): string {
-		if (!groundingMetadata) return text;
-		return this.citationsProcessor.addCitations(text, groundingMetadata);
+		return this.citationsProcessor.processChunk(text, groundingMetadata);
 	}
 
 	private createSearchAndUrlConfig(

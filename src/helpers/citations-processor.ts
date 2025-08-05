@@ -7,11 +7,38 @@ import { GroundingMetadata, CitationSource } from "../types/native-tools";
  */
 export class CitationsProcessor {
 	private enableInlineCitations: boolean;
-	private fullText = "";
-	private lastCitedText = "";
+	private fullText = ""; // This will now store the full text *with* citations
 
 	constructor(env: Env) {
 		this.enableInlineCitations = env.ENABLE_INLINE_CITATIONS === "true";
+	}
+
+	/**
+	 * Finds a "safe" insertion point for a citation to avoid breaking words or URLs.
+	 * It searches for the nearest whitespace or punctuation after the given index.
+	 */
+	private findSafeInsertionPoint(text: string, index: number): number {
+		// If the index is at the end of the text, it's always safe
+		if (index >= text.length) {
+			return text.length;
+		}
+
+		// Check if the character at the index is already a safe break
+		const charAtIndex = text.charAt(index);
+		if (/\s|[.,!?;:]/.test(charAtIndex)) {
+			return index;
+		}
+
+		// Search forward for a safe break
+		for (let i = index; i < text.length; i++) {
+			const char = text.charAt(i);
+			if (/\s|[.,!?;:]/.test(char)) {
+				return i;
+			}
+		}
+
+		// If no safe break found, return the original index (fallback)
+		return index;
 	}
 
 	public processChunk(textChunk: string, metadata?: GroundingMetadata): string {
@@ -19,18 +46,26 @@ export class CitationsProcessor {
 			return textChunk;
 		}
 
-		this.fullText += textChunk;
-
-		let newCitedText = this.fullText;
+		let citedTextChunk = textChunk; // This will be the textChunk with citations applied
+		let offset = 0; // Tracks the cumulative length added by inserted citations within the current textChunk
 
 		if (metadata && metadata.groundingSupports && metadata.groundingChunks) {
-			const supports = [...metadata.groundingSupports].sort(
-				(a, b) => (b.segment?.endIndex ?? 0) - (a.segment?.endIndex ?? 0)
+			const sortedSupports = [...metadata.groundingSupports].sort(
+				(a, b) => (a.segment?.startIndex ?? 0) - (b.segment?.startIndex ?? 0)
 			);
 
-			for (const support of supports) {
-				const endIndex = support.segment?.endIndex;
-				if (endIndex === undefined || !support.groundingChunkIndices?.length) {
+			for (const support of sortedSupports) {
+				const originalStartIndex = support.segment?.startIndex;
+				const originalEndIndex = support.segment?.endIndex;
+
+				// Only process citations that fall within the current textChunk
+				if (
+					originalStartIndex === undefined ||
+					originalEndIndex === undefined ||
+					!support.groundingChunkIndices?.length ||
+					originalStartIndex < 0 || // Ensure startIndex is not negative
+					originalEndIndex > textChunk.length // Ensure endIndex is within the current textChunk
+				) {
 					continue;
 				}
 
@@ -46,65 +81,25 @@ export class CitationsProcessor {
 
 				if (citationLinks.length > 0) {
 					const citationString = citationLinks.join(", ");
-					newCitedText = newCitedText.slice(0, endIndex) + citationString + newCitedText.slice(endIndex);
+					// Calculate the insertion index relative to the current `citedTextChunk`
+					const insertionIndex = originalEndIndex + offset;
+					const safeInsertionIndex = this.findSafeInsertionPoint(citedTextChunk, insertionIndex);
+
+					// Insert the citation into the citedTextChunk
+					citedTextChunk =
+						citedTextChunk.slice(0, safeInsertionIndex) + citationString + citedTextChunk.slice(safeInsertionIndex);
+
+					offset += citationString.length; // Update offset for subsequent insertions
 				}
 			}
 		}
 
-		const newContent = newCitedText.substring(this.lastCitedText.length);
-		this.lastCitedText = newCitedText; // Always update lastCitedText with the fully cited text
-		return newContent;
+		// Append the citedTextChunk to the fullText
+		this.fullText += citedTextChunk;
+
+		return citedTextChunk;
 	}
 
-	/**
-	 * Adds inline citations to text based on grounding metadata.
-	 * Citations are inserted at the end of text segments that have grounding support.
-	 * Format: [1](link1), [2](link2)
-	 */
-	public addCitations(text: string, groundingMetadata: GroundingMetadata): string {
-		if (!this.enableInlineCitations || !groundingMetadata.groundingSupports) {
-			return text;
-		}
-
-		console.log(JSON.stringify(groundingMetadata, null, 2));
-		console.log("Processing citations in text:", text);
-
-		const supports = groundingMetadata.groundingSupports;
-		const chunks = groundingMetadata.groundingChunks;
-
-		if (!supports || !chunks || supports.length === 0 || chunks.length === 0) {
-			return text;
-		}
-
-		// Sort supports by end_index in descending order to avoid shifting issues when inserting.
-		const sortedSupports = [...supports].sort((a, b) => (b.segment?.endIndex ?? 0) - (a.segment?.endIndex ?? 0));
-
-		let processedText = text;
-
-		for (const support of sortedSupports) {
-			const endIndex = support.segment?.endIndex;
-			if (endIndex === undefined || !support.groundingChunkIndices?.length) {
-				continue;
-			}
-
-			const citationLinks = support.groundingChunkIndices
-				.map((i) => {
-					const uri = chunks[i]?.web?.uri;
-					if (uri) {
-						return `[${i + 1}](${uri})`;
-					}
-					return null;
-				})
-				.filter(Boolean);
-
-			if (citationLinks.length > 0) {
-				const citationString = citationLinks.join(", ");
-				processedText = processedText.slice(0, endIndex) + citationString + processedText.slice(endIndex);
-			}
-		}
-
-		return processedText;
-	}
 
 	/**
 	 * Extracts search queries that were used to generate the grounded response.
