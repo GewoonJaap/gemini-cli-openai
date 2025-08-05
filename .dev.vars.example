@@ -61,7 +61,7 @@ ENABLE_AUTO_MODEL_SWITCHING=true
 
 # --- Citations and Grounding Configuration ---
 
-# Optional: Enable inline citations in responses (default: true)
+# Optional: Enable inline citations in responses (default: false)
 # ENABLE_INLINE_CITATIONS=true
 
 # Optional: Include grounding metadata in responses (default: true)
