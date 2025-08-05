@@ -32,7 +32,7 @@ export interface Env {
 	ALLOW_REQUEST_TOOL_CONTROL?: string; // Allow request-level tool control (default: true)
 
 	// Citations and Grounding Configuration
-	ENABLE_INLINE_CITATIONS?: string; // Enable inline citations in responses (default: true)
+	ENABLE_INLINE_CITATIONS?: string; // Enable inline citations in responses (default: false)
 	INCLUDE_GROUNDING_METADATA?: string; // Include grounding metadata in responses (default: true)
 	INCLUDE_SEARCH_ENTRY_POINT?: string; // Include search entry point HTML (default: false)
 }

@@ -142,7 +142,7 @@ export class NativeToolsManager {
 				NATIVE_TOOLS_DEFAULTS.GEMINI_TOOLS_PRIORITY,
 			defaultToNativeTools: env.DEFAULT_TO_NATIVE_TOOLS !== "false",
 			allowRequestControl: env.ALLOW_REQUEST_TOOL_CONTROL !== "false",
-			enableInlineCitations: env.ENABLE_INLINE_CITATIONS !== "false",
+			enableInlineCitations: env.ENABLE_INLINE_CITATIONS === "true",
 			includeGroundingMetadata: env.INCLUDE_GROUNDING_METADATA !== "false",
 			includeSearchEntryPoint: env.INCLUDE_SEARCH_ENTRY_POINT === "true"
 		};

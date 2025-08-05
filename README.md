@@ -180,7 +180,7 @@ npm run dev
 | `ENABLE_URL_CONTEXT` | Enable URL Context native tool (set to `"true"`). |
 | `GEMINI_TOOLS_PRIORITY` | Set tool priority: `"native_first"` or `"custom_first"`. |
 | `ALLOW_REQUEST_TOOL_CONTROL` | Allow request parameters to override tool settings (set to `"false"` to disable). |
-| `ENABLE_INLINE_CITATIONS` | Inject markdown citations for search results (set to `"false"` to disable). |
+| `ENABLE_INLINE_CITATIONS` | Inject markdown citations for search results (set to `"true"` to enable). |
 | `INCLUDE_GROUNDING_METADATA` | Include raw grounding metadata in the stream (set to `"false"` to disable). |
 
 #### Content Safety
