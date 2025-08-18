@@ -136,3 +136,6 @@ dist
 .pnp.*
 .dev.vars
 .wrangler/
+
+# Local cache file
+.cache.json

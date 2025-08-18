@@ -1,4 +1,5 @@
 import { NativeToolResponse } from "./types/native-tools";
+import { KVNamespace } from "./utils/file-cache";
 
 // --- Safety Threshold Types ---
 export type SafetyThreshold =
