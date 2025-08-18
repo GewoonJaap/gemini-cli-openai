@@ -190,31 +190,39 @@ export class GenerationConfigValidator {
 	static createValidateTools(options: Partial<ChatCompletionRequest> = {}) {
 		const tools = [];
 		let toolConfig = {};
+
+		// Recursive function to deep-filter keys starting with '$' (removes internal/system keys)
+
+		const deepFilter = (obj: unknown): unknown => {
+			if (Array.isArray(obj)) {
+				return obj.map(deepFilter);
+			}
+			if (obj && typeof obj === "object") {
+				return Object.keys(obj as Record<string, unknown>)
+					.filter((key) => !key.startsWith("$"))
+					.reduce(
+						(acc, key) => {
+							acc[key] = deepFilter((obj as Record<string, unknown>)[key]);
+							return acc;
+						},
+						{} as Record<string, unknown>
+					);
+			}
+			return obj;
+		};
+
 		// Add tools configuration if provided
 		if (Array.isArray(options.tools) && options.tools.length > 0) {
 			const functionDeclarations = options.tools.map((tool) => {
-				let parameters = tool.function.parameters;
-				// Filter parameters for Claude-style compatibility by removing keys starting with '$'
-				if (parameters) {
-					const before = parameters;
-					parameters = Object.keys(parameters)
-						.filter((key) => !key.startsWith("$"))
-						.reduce(
-							(after, key) => {
-								after[key] = before[key];
-								return after;
-							},
-							{} as Record<string, unknown>
-						);
-				}
 				return {
 					name: tool.function.name,
 					description: tool.function.description,
-					parameters
+					parameters: deepFilter(tool.function.parameters)
 				};
 			});
 
 			tools.push({ functionDeclarations });
+
 			// Handle tool choice
 			if (options.tool_choice) {
 				if (options.tool_choice === "auto") {
@@ -234,6 +242,7 @@ export class GenerationConfigValidator {
 
 		return { tools, toolConfig };
 	}
+
 	static createFinalToolConfiguration(
 		config: NativeToolsConfiguration,
 		options: Partial<ChatCompletionRequest> = {}
