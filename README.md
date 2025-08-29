@@ -150,6 +150,44 @@ npm run deploy
 npm run dev
 ```
 
+### Running Locally
+
+There are two ways to run this project :
+
+#### 1. Cloudflare Worker Development (Default)
+
+This method uses the Wrangler CLI to simulate the Cloudflare environment locally. It requires the setup steps (1-3) to be completed, including creating a KV namespace.
+
+```bash
+# Run the local Cloudflare development server
+npm run dev
+```
+
+#### 2. Standalone Node.js Server (No Cloudflare)
+
+This method runs the worker as a standard Node.js application, completely independent of the Cloudflare infrastructure. It's useful for offline development or if you don't want to set up a Cloudflare account.
+
+1.  **Create a `.env` file**: If you haven't already, copy the `.dev.vars.example` file to a new file named `.env`.
+    ```bash
+    cp .dev.vars.example .env
+    ```
+2.  **Configure Credentials**: Open the `.env` file and paste your `GCP_SERVICE_ACCOUNT` JSON credentials.
+3.  **Install Dependencies**:
+    ```bash
+    npm install
+    # or
+    yarn install
+    ```
+4.  **Build and Run**:
+    ```bash
+    # Build the local server code
+    npm run build:local
+
+    # Start the local server
+    npm run start:local
+    ```
+    The server will be available at `http://localhost:3000` by default.
+
 ## 🔧 Configuration
 
 ### Environment Variables
