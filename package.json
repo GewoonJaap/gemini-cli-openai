@@ -20,7 +20,7 @@
     "tsc": "tsc --noEmit --skipLibCheck"
   },
   "dependencies": {
-    "hono": "^4.9.2"
+    "hono": "^4.9.10"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250816.0",
