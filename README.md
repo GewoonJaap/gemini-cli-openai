@@ -105,10 +105,19 @@ You need OAuth2 credentials from a Google account that has accessed Gemini. The 
 
 To avoid rate limiting, you can configure multiple Google accounts. The system will automatically rotate between accounts when one hits a rate limit.
 
-1. **Authenticate multiple accounts**:
-   Follow the steps above for each Google account you want to use. Save each account's `oauth_creds.json` separately.
+1. **Authenticate your first account**:
+   - Run `gemini auth` and login with your first Google account
+   - Navigate to the credentials file location:
+     - **Windows:** `C:\Users\USERNAME\.gemini\oauth_creds.json`
+     - **macOS/Linux:** `~/.gemini/oauth_creds.json`
+   - Copy the entire contents to a file named `account1.json`
 
-2. **Combine credentials into an array**:
+2. **Authenticate your second account** (repeat for more accounts):
+   - Delete the existing `~/.gemini/oauth_creds.json` file
+   - Run `gemini auth` again and login with your second Google account
+   - Copy the new credentials to `account2.json`
+
+3. **Combine credentials into an array**:
    Instead of a single credential object, use a JSON array:
    ```json
    [
@@ -131,8 +140,8 @@ To avoid rate limiting, you can configure multiple Google accounts. The system w
    ]
    ```
 
-3. **Enable multi-account mode**:
-   Set the `ENABLE_MULTI_ACCOUNT` environment variable to `"true"` (see Step 3 below).
+4. **Enable multi-account mode**:
+   Set the `ENABLE_MULTI_ACCOUNT` environment variable to `"true"` in your `.dev.vars` file (see Step 3: Environment Setup below).
 
 **How it works:**
 - The system tracks account health and rate limit status in Cloudflare KV storage

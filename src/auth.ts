@@ -84,10 +84,27 @@ export class AuthManager {
 			
 			// Check if it's an array (multi-account) or single object
 			if (Array.isArray(parsed)) {
+				// Validate that all array elements are valid OAuth2 credentials
+				if (parsed.length === 0) {
+					throw new Error("GCP_SERVICE_ACCOUNT array is empty. Please provide at least one account.");
+				}
+				
+				for (let i = 0; i < parsed.length; i++) {
+					const account = parsed[i];
+					if (!account.refresh_token || !account.access_token) {
+						throw new Error(`Invalid credentials at index ${i}: missing required fields (refresh_token or access_token)`);
+					}
+				}
+				
 				this.accounts = parsed as OAuth2Credentials[];
 				this.isMultiAccountMode = this.isMultiAccountEnabled() && this.accounts.length > 1;
 				console.log(`Loaded ${this.accounts.length} accounts. Multi-account mode: ${this.isMultiAccountMode}`);
 			} else {
+				// Validate single account has required fields
+				if (!parsed.refresh_token || !parsed.access_token) {
+					throw new Error("Invalid credentials: missing required fields (refresh_token or access_token)");
+				}
+				
 				this.accounts = [parsed as OAuth2Credentials];
 				this.isMultiAccountMode = false;
 				console.log("Loaded single account");
@@ -97,8 +114,10 @@ export class AuthManager {
 				throw new Error("No valid accounts found in GCP_SERVICE_ACCOUNT");
 			}
 		} catch (e: unknown) {
-			const errorMessage = e instanceof Error ? e.message : String(e);
-			throw new Error(`Failed to parse GCP_SERVICE_ACCOUNT: ${errorMessage}`);
+			if (e instanceof SyntaxError) {
+				throw new Error(`Failed to parse GCP_SERVICE_ACCOUNT: Invalid JSON format. ${e.message}`);
+			}
+			throw e; // Re-throw if it's already our custom error
 		}
 	}
 
@@ -143,8 +162,8 @@ export class AuthManager {
 			if (health) {
 				return health as AccountHealthStatus;
 			}
-		} catch {
-			console.log(`No health data for account ${accountIndex}`);
+		} catch (error) {
+			console.log(`No health data for account ${accountIndex}:`, error);
 		}
 
 		return {
