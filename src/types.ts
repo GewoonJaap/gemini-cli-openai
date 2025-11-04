@@ -10,7 +10,7 @@ export type SafetyThreshold =
 
 // --- Environment Variable Typings ---
 export interface Env {
-	GCP_SERVICE_ACCOUNT: string; // Now contains OAuth2 credentials JSON
+	GCP_SERVICE_ACCOUNT: string; // Now contains OAuth2 credentials JSON (supports single account or JSON array of multiple accounts)
 	GEMINI_PROJECT_ID?: string;
 	GEMINI_CLI_KV: KVNamespace; // Cloudflare KV for token caching
 	OPENAI_API_KEY?: string; // Optional API key for authentication
@@ -18,6 +18,7 @@ export interface Env {
 	ENABLE_REAL_THINKING?: string; // Optional flag to enable real Gemini thinking output (set to "true" to enable)
 	STREAM_THINKING_AS_CONTENT?: string; // Optional flag to stream thinking as content with <thinking> tags (set to "true" to enable)
 	ENABLE_AUTO_MODEL_SWITCHING?: string; // Optional flag to enable automatic fallback from pro to flash on 429 errors (set to "true" to enable)
+	ENABLE_MULTI_ACCOUNT?: string; // Optional flag to enable multi-account rotation for rate limit avoidance (set to "true" to enable)
 	GEMINI_MODERATION_HARASSMENT_THRESHOLD?: SafetyThreshold;
 	GEMINI_MODERATION_HATE_SPEECH_THRESHOLD?: SafetyThreshold;
 	GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD?: SafetyThreshold;

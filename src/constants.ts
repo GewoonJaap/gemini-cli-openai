@@ -68,3 +68,9 @@ export const NATIVE_TOOLS_DEFAULTS = {
 	INCLUDE_GROUNDING_METADATA: true,
 	INCLUDE_SEARCH_ENTRY_POINT: false
 } as const;
+
+// Multi-account configuration
+export const MULTI_ACCOUNT_CONFIG = {
+	RATE_LIMIT_COOLDOWN_MS: 60000, // 1 minute cooldown for rate-limited accounts
+	MAX_ACCOUNT_RETRY_ATTEMPTS: 3 // Maximum number of accounts to try before giving up
+} as const;

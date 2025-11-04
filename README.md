@@ -19,6 +19,7 @@ Transform Google's Gemini models into OpenAI-compatible endpoints using Cloudfla
 - 🆓 **Free Tier Access** - Leverage Google's free tier through Code Assist API
 - 📡 **Real-time Streaming** - Server-sent events for live responses with token usage
 - 🎭 **Multiple Models** - Access to latest Gemini models including experimental ones
+- 🔀 **Multi-Account Support** - Automatic rotation between multiple accounts to avoid rate limiting
 
 ## 🤖 Supported Models
 
@@ -100,6 +101,46 @@ You need OAuth2 credentials from a Google account that has accessed Gemini. The 
    }
    ```
 
+#### Multi-Account Setup (Optional - for Rate Limit Avoidance)
+
+To avoid rate limiting, you can configure multiple Google accounts. The system will automatically rotate between accounts when one hits a rate limit.
+
+1. **Authenticate multiple accounts**:
+   Follow the steps above for each Google account you want to use. Save each account's `oauth_creds.json` separately.
+
+2. **Combine credentials into an array**:
+   Instead of a single credential object, use a JSON array:
+   ```json
+   [
+     {
+       "access_token": "ya29.a0AS3H6Nx...",
+       "refresh_token": "1//09FtpJYpxOd...",
+       "scope": "https://www.googleapis.com/auth/cloud-platform ...",
+       "token_type": "Bearer",
+       "id_token": "eyJhbGciOiJSUzI1NiIs...",
+       "expiry_date": 1750927763467
+     },
+     {
+       "access_token": "ya29.a0Bb2H8Mx...",
+       "refresh_token": "1//09GtqKZqyPe...",
+       "scope": "https://www.googleapis.com/auth/cloud-platform ...",
+       "token_type": "Bearer",
+       "id_token": "eyJhbGciOiJSUzI1NiIt...",
+       "expiry_date": 1750927763467
+     }
+   ]
+   ```
+
+3. **Enable multi-account mode**:
+   Set the `ENABLE_MULTI_ACCOUNT` environment variable to `"true"` (see Step 3 below).
+
+**How it works:**
+- The system tracks account health and rate limit status in Cloudflare KV storage
+- When a request fails with a rate limit error (HTTP 429 or 503), the system automatically switches to the next available account
+- Rate-limited accounts are placed on cooldown (60 seconds by default) before being tried again
+- Accounts are rotated in a round-robin fashion for optimal distribution
+- Up to 3 retry attempts are made before giving up
+
 ### Step 2: Create KV Namespace
 
 ```bash
@@ -118,6 +159,8 @@ kv_namespaces = [
 ### Step 3: Environment Setup
 
 Create a `.dev.vars` file:
+
+**Single Account (Basic Setup):**
 ```bash
 # Required: OAuth2 credentials JSON from Gemini CLI authentication
 GCP_SERVICE_ACCOUNT={"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","id_token":"eyJ...","expiry_date":1750927763467}
@@ -128,6 +171,18 @@ GCP_SERVICE_ACCOUNT={"access_token":"ya29...","refresh_token":"1//...","scope":"
 # Optional: API key for authentication (if not set, API is public)
 # When set, clients must include "Authorization: Bearer <your-api-key>" header
 # Example: sk-1234567890abcdef1234567890abcdef
+OPENAI_API_KEY=sk-your-secret-api-key-here
+```
+
+**Multiple Accounts (Rate Limit Avoidance):**
+```bash
+# Required: OAuth2 credentials JSON array for multiple accounts
+GCP_SERVICE_ACCOUNT=[{"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","id_token":"eyJ...","expiry_date":1750927763467},{"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","id_token":"eyJ...","expiry_date":1750927763467}]
+
+# Optional: Enable multi-account rotation (required for automatic account switching)
+ENABLE_MULTI_ACCOUNT=true
+
+# Optional: API key for authentication
 OPENAI_API_KEY=sk-your-secret-api-key-here
 ```
 
@@ -158,9 +213,10 @@ npm run dev
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GCP_SERVICE_ACCOUNT` | ✅ | OAuth2 credentials JSON string. |
+| `GCP_SERVICE_ACCOUNT` | ✅ | OAuth2 credentials JSON string. Supports single account (object) or multiple accounts (array) for rate limit avoidance. |
 | `GEMINI_PROJECT_ID` | ❌ | Google Cloud Project ID (auto-discovered if not set). |
 | `OPENAI_API_KEY` | ❌ | API key for authentication. If not set, the API is public. |
+| `ENABLE_MULTI_ACCOUNT` | ❌ | Enable multi-account rotation for rate limit avoidance (set to `"true"`). Only works when `GCP_SERVICE_ACCOUNT` contains an array of accounts. |
 
 #### Thinking & Reasoning
 
@@ -217,11 +273,26 @@ npm run dev
 - Only applies to supported model pairs (currently: pro → flash).
 - Works for both streaming and non-streaming requests.
 
+**Multi-Account Support:**
+- When `ENABLE_MULTI_ACCOUNT` is set to `"true"` and `GCP_SERVICE_ACCOUNT` contains multiple accounts (JSON array), the system automatically rotates between accounts to avoid rate limiting.
+- **Intelligent Rotation**: Accounts are rotated in a round-robin fashion, with automatic fallback when one account hits a rate limit.
+- **Account Health Tracking**: The system tracks which accounts are rate-limited and automatically skips them until the cooldown period expires (60 seconds default).
+- **Seamless Failover**: When a request fails with HTTP 429 or 503, the system immediately switches to the next available account and retries the request (up to 3 attempts).
+- **Stateless & Distributed**: Account rotation state is stored in Cloudflare KV, ensuring consistent behavior across all edge locations and worker instances.
+- **Token Caching**: Each account's OAuth token is cached independently in KV storage for optimal performance.
+- **Works with Auto Model Switching**: Multi-account rotation and auto model switching can be used together for maximum resilience.
+
+**Benefits of Multi-Account:**
+- **Increased throughput**: Effectively multiplies your rate limit capacity by the number of accounts.
+- **Uninterrupted service**: Automatic failover ensures requests don't fail due to rate limits.
+- **Simple setup**: Just authenticate multiple Google accounts and combine their credentials into an array.
+- **Production-ready**: Designed for serverless Cloudflare Workers with distributed state management.
+
 ### KV Namespaces
 
 | Binding | Purpose |
 |---------|---------|
-| `GEMINI_CLI_KV` | Token caching and session management |
+| `GEMINI_CLI_KV` | Token caching, session management, account rotation state, and account health tracking |
 
 ## 🚨 Troubleshooting
 
