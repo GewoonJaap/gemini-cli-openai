@@ -2,7 +2,12 @@
 
 # Required: OAuth2 credentials JSON from Gemini CLI authentication
 # Get this by running `gemini auth` and copying the contents of ~/.gemini/oauth_creds.json
+# Supports single account (object) or multiple accounts (array) for rate limit avoidance
+# Single account example:
 GCP_SERVICE_ACCOUNT={"access_token":"ya29.a0AS3H6Nx...","refresh_token":"1//09FtpJYpxOd...","scope":"https://www.googleapis.com/auth/cloud-platform ...","token_type":"Bearer","id_token":"eyJhbGciOiJSUzI1NiIs...","expiry_date":1750927763467}
+
+# Multiple accounts example (for rate limit avoidance):
+# GCP_SERVICE_ACCOUNT=[{"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","id_token":"eyJ...","expiry_date":1750927763467},{"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","id_token":"eyJ...","expiry_date":1750927763467}]
 
 # Optional: Google Cloud Project ID (auto-discovered if not set)
 # GEMINI_PROJECT_ID=your-project-id
@@ -11,6 +16,11 @@ GCP_SERVICE_ACCOUNT={"access_token":"ya29.a0AS3H6Nx...","refresh_token":"1//09Ft
 # When set, clients must include "Authorization: Bearer <your-api-key>" header
 # Example: sk-1234567890abcdef1234567890abcdef
 OPENAI_API_KEY=sk-your-secret-api-key-here
+
+# Optional: Enable multi-account rotation for rate limit avoidance (set to "true" to enable)
+# When enabled with multiple accounts in GCP_SERVICE_ACCOUNT, the system will automatically
+# rotate between accounts when rate limits are encountered, ensuring continuous operation
+ENABLE_MULTI_ACCOUNT=true
 
 # Optional: Enable fake thinking output for thinking models (set to "true" to enable)
 # When enabled, models marked with thinking: true will generate synthetic reasoning text
