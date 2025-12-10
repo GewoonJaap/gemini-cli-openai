@@ -257,3 +257,140 @@ Content-Type: application/json
     }
   ]
 }
+
+###
+
+### Test with audio input
+POST https://gemini-cli-worker.gewoonjaap.workers.dev/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "gemini-2.5-flash",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "What do you hear in this audio?"
+        },
+        {
+          "type": "input_audio",
+          "input_audio": {
+            "data": base64_encoded_audio,
+            "format": "audio/mpeg"
+          }
+        }
+      ]
+    }
+  ]
+}
+
+###
+
+### Test with video input
+POST https://gemini-cli-worker.gewoonjaap.workers.dev/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "gemini-2.5-flash",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "What do you see in this video?"
+        },
+        {
+          "type": "input_video",
+          "input_video": {
+            "data": base64encoded_video,
+            "format": "video/mp4"
+          }
+        }
+      ]
+    }
+  ]
+}
+
+###
+
+### Test with video input with videoMetadata
+POST https://gemini-cli-worker.gewoonjaap.workers.dev/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "gemini-2.5-flash",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "What do you see in this video?"
+        },
+        {
+          "type": "input_video",
+          "input_video": {
+            "data": base64_encoded_video,
+            "format": "video/mp4",
+            "videoMetadata": {
+                "start_offset": "10s",
+                "end_offset": "20s",
+                "fps": 5
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+
+###
+
+### Test with pdf input
+POST https://gemini-cli-worker.gewoonjaap.workers.dev/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "gemini-2.5-flash",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Summarize the following document."
+        },
+        {
+          "type": "input_pdf",
+          "input_pdf": {
+            "data": base64_encoded_pdf
+          }
+        }
+      ]
+    }
+  ]
+}
+
+###
+
+### Test /audio/transcriptions endpoint
+POST https://gemini-cli-worker.gewoonjaap.workers.dev/v1/audio/transcriptions
+Content-Type: multipart/form-data
+
+--------------------------d2c759f1b998630d
+Content-Disposition: form-data; name="model"
+
+gemini-2.5-flash
+--------------------------d2c759f1b998630d
+Content-Disposition: form-data; name="file"; filename="test-audio.mp3"
+Content-Type: "audio/mpeg"
+
+test-audio.mp3
+--------------------------d2c759f1b998630d
+Content-Disposition: form-data; name="prompt"
+
+Transcribe the following audio.
+--------------------------d2c759f1b998630d--

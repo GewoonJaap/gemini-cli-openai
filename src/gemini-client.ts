@@ -14,6 +14,7 @@ import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "./config";
 import { REASONING_MESSAGES, REASONING_CHUNK_DELAY, THINKING_CONTENT_CHUNK_SIZE } from "./constants";
 import { geminiCliModels } from "./models";
 import { validateImageUrl } from "./utils/image-utils";
+import { validatePdfBase64 } from "./utils/pdf-utils";
 import { GenerationConfigValidator } from "./helpers/generation-config-validator";
 import { AutoModelSwitchingHelper } from "./helpers/auto-model-switching";
 import { NativeToolsManager } from "./helpers/native-tools-manager";
@@ -62,6 +63,13 @@ export interface GeminiPart {
 		fileUri: string;
 	};
 	url_context_metadata?: GeminiUrlContextMetadata;
+	// docs: https://ai.google.dev/gemini-api/docs/video-understanding#clipping-intervals
+	// all must not exceed video real values
+	videoMetadata?: {
+		startOffset?: string; // string in seconds (40s)
+		endOffset?: string;   // string in seconds (80s)
+		fps?: number;
+	};
 }
 
 // Message content types - keeping only the local ones needed
@@ -267,6 +275,51 @@ export class GeminiApiClient {
 							}
 						});
 					}
+				} else if (content.type === "input_audio" && content.input_audio) {
+					parts.push({
+						inlineData: {
+							mimeType: content.input_audio.format,
+							data: content.input_audio.data
+						}
+					});
+				} else if (content.type === "input_video" && content.input_video) {
+					if (content.input_video.data && content.input_video.format) {
+						// Handle base64 video
+						const part: GeminiPart = {
+							inlineData: {
+								mimeType: content.input_video.format,
+								data: content.input_video.data
+							}
+						};
+
+						// Add video metadata if present
+						if (content.input_video.videoMetadata) {
+							const { start_offset, end_offset, fps } = content.input_video.videoMetadata;
+							if (start_offset || end_offset || fps ) {
+								part.videoMetadata = {};
+								// Pass strings directly as Gemini API accepts "10s" format
+								if (start_offset) part.videoMetadata.startOffset = start_offset;
+								if (end_offset) part.videoMetadata.endOffset = end_offset;
+								if (fps) part.videoMetadata.fps = fps;
+							}
+						}
+						parts.push(part);
+					}
+				} else if (content.type === "input_pdf" && content.input_pdf) {
+					if (content.input_pdf.data) {
+						// Handle base64 PDF
+						// Validate PDF content
+						if (!validatePdfBase64(content.input_pdf.data)) {
+							throw new Error("Invalid PDF data. Please ensure the content is a valid base64 encoded PDF.");
+						}
+
+						parts.push({
+							inlineData: {
+								mimeType: "application/pdf",
+								data: content.input_pdf.data
+							}
+						});
+					}
 				}
 			}
 
@@ -285,6 +338,27 @@ export class GeminiApiClient {
 	 */
 	private validateImageSupport(modelId: string): boolean {
 		return geminiCliModels[modelId]?.supportsImages || false;
+	}
+
+	/**
+	 * Validates if the model supports audio.
+	 */
+	private validateAudioSupport(modelId: string): boolean {
+		return geminiCliModels[modelId]?.supportsAudios || false;
+	}
+
+	/**
+	 * Validates if the model supports video.
+	 */
+	private validateVideoSupport(modelId: string): boolean {
+		return geminiCliModels[modelId]?.supportsVideos || false;
+	}
+
+	/**
+	 * Validates if the model supports PDF.
+	 */
+	private validatePdfSupport(modelId: string): boolean {
+		return geminiCliModels[modelId]?.supportsPdfs || false;
 	}
 
 	/**

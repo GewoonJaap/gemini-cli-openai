@@ -1,11 +1,13 @@
 import { Hono } from "hono";
-import { Env, ChatCompletionRequest, ChatCompletionResponse } from "../types";
+import { Env, ChatCompletionRequest, ChatCompletionResponse, ChatMessage } from "../types";
 import { geminiCliModels, DEFAULT_MODEL, getAllModelIds } from "../models";
 import { OPENAI_MODEL_OWNER } from "../config";
 import { DEFAULT_THINKING_BUDGET } from "../constants";
 import { AuthManager } from "../auth";
 import { GeminiApiClient } from "../gemini-client";
 import { createOpenAIStreamTransformer } from "../stream-transformer";
+import { validatePdfBase64 } from "../utils/pdf-utils";
+import { Buffer } from "node:buffer";
 
 /**
  * OpenAI-compatible API routes for models and chat completions.
@@ -119,6 +121,77 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 				},
 				400
 			);
+		}
+
+		// Check if the request contains audio and validate model support
+		const hasAudio = messages.some((msg) => {
+			if (Array.isArray(msg.content)) {
+				return msg.content.some((content) => content.type === "input_audio");
+			}
+			return false;
+		});
+
+		if (hasAudio && !geminiCliModels[model].supportsAudios) {
+			return c.json(
+				{
+					error: `Model '${model}' does not support audio inputs. Please use a vision-capable model like gemini-2.5-pro or gemini-2.5-flash.`
+				},
+				400
+			);
+		}
+
+		// Check if the request contains video and validate model support
+		const hasVideo = messages.some((msg) => {
+			if (Array.isArray(msg.content)) {
+				return msg.content.some((content) => content.type === "input_video");
+			}
+			return false;
+		});
+
+		if (hasVideo && !geminiCliModels[model].supportsVideos) {
+			return c.json(
+				{
+					error: `Model '${model}' does not support video inputs. Please use a vision-capable model like gemini-2.5-pro or gemini-2.5-flash.`
+				},
+				400
+			);
+		}
+
+		// Check if the request contains PDF and validate model support
+		const hasPdf = messages.some((msg) => {
+			if (Array.isArray(msg.content)) {
+				return msg.content.some((content) => content.type === "input_pdf");
+			}
+			return false;
+		});
+
+		if (hasPdf) {
+			if (!geminiCliModels[model].supportsPdfs) {
+				return c.json(
+					{
+						error: `Model '${model}' does not support PDF inputs. Please use a model that supports PDFs like gemini-2.5-pro or gemini-2.5-flash.`
+					},
+					400
+				);
+			}
+
+			// Validate PDF content
+			for (const msg of messages) {
+				if (Array.isArray(msg.content)) {
+					for (const content of msg.content) {
+						if (content.type === "input_pdf" && content.input_pdf?.data) {
+							if (!validatePdfBase64(content.input_pdf.data)) {
+								return c.json(
+									{
+										error: "Invalid PDF data. Please ensure the content is a valid base64 encoded PDF."
+									},
+									400
+								);
+							}
+						}
+					}
+				}
+			}
 		}
 
 		// Extract system prompt and user/assistant messages
@@ -253,6 +326,97 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 	} catch (e: unknown) {
 		const errorMessage = e instanceof Error ? e.message : String(e);
 		console.error("Top-level error:", e);
+		return c.json({ error: errorMessage }, 500);
+	}
+});
+
+// Audio transcriptions endpoint
+OpenAIRoute.post("/audio/transcriptions", async (c) => {
+	try {
+		console.log("Audio transcription request received");
+		const body = await c.req.parseBody();
+		const file = body["file"];
+		const model = (body["model"] as string) || DEFAULT_MODEL;
+		const prompt = (body["prompt"] as string) || "Transcribe this audio in details.";
+
+		if (!file || !(file instanceof File)) {
+			return c.json({ error: "File is required" }, 400);
+		}
+
+		// Convert File to base64
+		const arrayBuffer = await file.arrayBuffer();
+		console.log(`Processing audio file: size=${arrayBuffer.byteLength} bytes, type=${file.type}`);
+		
+		let base64Audio: string;
+		try {
+			base64Audio = Buffer.from(arrayBuffer).toString("base64");
+		} catch (e: unknown) {
+			const errorMessage = e instanceof Error ? e.message : String(e);
+			console.error("Base64 conversion failed:", errorMessage);
+			throw new Error(`Failed to process audio file: ${errorMessage}`);
+		}
+		
+		let mimeType = file.type;
+
+		// Fallback for application/octet-stream
+		if (mimeType === "application/octet-stream" && file.name) {
+			const ext = file.name.split(".").pop()?.toLowerCase();
+			if (ext) {
+				const mimeMap: Record<string, string> = {
+					"mp3": "audio/mpeg",
+					"mp4": "audio/mp4",
+					"mpeg": "audio/mpeg",
+					"mpga": "audio/mpeg",
+					"m4a": "audio/mp4",
+					"wav": "audio/wav",
+					"webm": "audio/webm",
+					"ogg": "audio/ogg",
+					"oga": "audio/ogg",
+					"flac": "audio/flac",
+					"mov": "video/quicktime",
+					"mpg": "video/mpeg",
+					"avi": "video/x-msvideo",
+					"wmv": "video/x-ms-wmv",
+					"flv": "video/x-flv"
+				};
+				if (mimeMap[ext]) {
+					mimeType = mimeMap[ext];
+					console.log(`Detected MIME type from extension .${ext}: ${mimeType}`);
+				}
+			}
+		}
+
+		// Construct message
+		const messages: ChatMessage[] = [
+			{
+				role: "user",
+				content: [
+					{
+						type: "text",
+						text: prompt
+					},
+					{
+						type: "input_audio",
+						input_audio: {
+							data: base64Audio,
+							format: mimeType
+						}
+					}
+				]
+			}
+		];
+
+		// Initialize client
+		const authManager = new AuthManager(c.env);
+		const geminiClient = new GeminiApiClient(c.env, authManager);
+
+		// Get completion
+		const completion = await geminiClient.getCompletion(model, "", messages);
+
+		return c.json({ text: completion.content });
+	} catch (e: unknown) {
+		const errorMessage = e instanceof Error ? e.message : String(e);
+		console.error("Transcription error:", errorMessage);
 		return c.json({ error: errorMessage }, 500);
 	}
 });

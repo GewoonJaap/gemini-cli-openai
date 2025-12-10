@@ -2,6 +2,7 @@ import { NativeToolResponse } from "./types/native-tools";
 
 // --- Safety Threshold Types ---
 export type SafetyThreshold =
+	| "OFF" // can be off: https://ai.google.dev/gemini-api/docs/safety-settings#safety-filtering-per-request
 	| "BLOCK_NONE"
 	| "BLOCK_FEW"
 	| "BLOCK_SOME"
@@ -52,6 +53,9 @@ export interface ModelInfo {
 	maxTokens: number;
 	contextWindow: number;
 	supportsImages: boolean;
+	supportsAudios: boolean;
+	supportsVideos: boolean;
+	supportsPdfs: boolean;
 	supportsPromptCache: boolean;
 	inputPrice: number;
 	outputPrice: number;
@@ -114,6 +118,15 @@ export interface ChatCompletionRequest {
 	native_tools_priority?: "native" | "custom" | "mixed";
 }
 
+export interface AudioTranscriptionRequest {
+	file: File;
+	model?: string;
+	prompt?: string;
+	response_format?: string;
+	temperature?: number;
+	language?: string;
+}
+
 export interface ToolCall {
 	id: string;
 	type: "function";
@@ -130,12 +143,32 @@ export interface ChatMessage {
 	tool_call_id?: string;
 }
 
+export interface VideoMetadata {
+	start_offset?: string;
+	end_offset?: string;
+	fps?: number;
+}
+
 export interface MessageContent {
-	type: "text" | "image_url";
+	type: "text" | "image_url" | "input_audio" | "input_video" | "input_pdf";
 	text?: string;
 	image_url?: {
 		url: string;
 		detail?: "low" | "high" | "auto";
+	};
+	input_audio?: {
+		data: string;
+		format: string;
+	};
+	input_video?: {
+		data?: string;
+		format?: string;
+		url?: string;
+		videoMetadata?: VideoMetadata;
+	};
+	input_pdf?: {
+		data: string; // base64 encoded PDF
+		url?: string; // Optional URL if not base64
 	};
 }
 
