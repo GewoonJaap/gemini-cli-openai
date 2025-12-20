@@ -394,3 +394,19 @@ Content-Disposition: form-data; name="prompt"
 
 Transcribe the following audio.
 --------------------------d2c759f1b998630d--
+
+###
+
+### Test with gemini-3-flash-preview model
+POST https://gemini-cli-worker.gewoonjaap.workers.dev/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "gemini-3-flash-preview",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello! I am testing the new Gemini 3 Flash Preview model."
+    }
+  ]
+}
