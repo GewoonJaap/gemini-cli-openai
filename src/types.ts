@@ -118,15 +118,6 @@ export interface ChatCompletionRequest {
 	native_tools_priority?: "native" | "custom" | "mixed";
 }
 
-export interface AudioTranscriptionRequest {
-	file: File;
-	model?: string;
-	prompt?: string;
-	response_format?: string;
-	temperature?: number;
-	language?: string;
-}
-
 export interface ToolCall {
 	id: string;
 	type: "function";
@@ -144,8 +135,8 @@ export interface ChatMessage {
 }
 
 export interface VideoMetadata {
-	start_offset?: string;
-	end_offset?: string;
+	startOffset: string;
+	endOffset: string;
 	fps?: number;
 }
 
@@ -161,14 +152,14 @@ export interface MessageContent {
 		format: string;
 	};
 	input_video?: {
-		data?: string;
-		format?: string;
+		data: string;
+		format: string;
 		url?: string;
 		videoMetadata?: VideoMetadata;
 	};
 	input_pdf?: {
 		data: string; // base64 encoded PDF
-		url?: string; // Optional URL if not base64
+		// url?: string; // i think there's some way to pass a pdf url directly to gemini api, but i couldn't find how in docs
 	};
 }
 

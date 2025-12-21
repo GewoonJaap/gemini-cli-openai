@@ -2,11 +2,11 @@ import { Hono } from "hono";
 import { Env, ChatCompletionRequest, ChatCompletionResponse, ChatMessage } from "../types";
 import { geminiCliModels, DEFAULT_MODEL, getAllModelIds } from "../models";
 import { OPENAI_MODEL_OWNER } from "../config";
-import { DEFAULT_THINKING_BUDGET } from "../constants";
+import { DEFAULT_THINKING_BUDGET, MIME_TYPE_MAP } from "../constants";
 import { AuthManager } from "../auth";
 import { GeminiApiClient } from "../gemini-client";
 import { createOpenAIStreamTransformer } from "../stream-transformer";
-import { validatePdfBase64 } from "../utils/pdf-utils";
+import { isMediaTypeSupported, validateContent } from "../utils/validation";
 import { Buffer } from "node:buffer";
 
 /**
@@ -106,87 +106,39 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 			);
 		}
 
-		// Check if the request contains images and validate model support
-		const hasImages = messages.some((msg) => {
-			if (Array.isArray(msg.content)) {
-				return msg.content.some((content) => content.type === "image_url");
-			}
-			return false;
-		});
+		// Unified media validation
+		const mediaChecks: {
+			type: string;
+			supportKey: keyof import("../types").ModelInfo;
+			name: string;
+		}[] = [
+			{ type: "image_url", supportKey: "supportsImages", name: "image inputs" },
+			{ type: "input_audio", supportKey: "supportsAudios", name: "audio inputs" },
+			{ type: "input_video", supportKey: "supportsVideos", name: "video inputs" },
+			{ type: "input_pdf", supportKey: "supportsPdfs", name: "PDF inputs" }
+		];
 
-		if (hasImages && !geminiCliModels[model].supportsImages) {
-			return c.json(
-				{
-					error: `Model '${model}' does not support image inputs. Please use a vision-capable model like gemini-2.5-pro or gemini-2.5-flash.`
-				},
-				400
+		for (const { type, supportKey, name } of mediaChecks) {
+			const messagesWithMedia = messages.filter(
+				(msg) => Array.isArray(msg.content) && msg.content.some((content) => content.type === type)
 			);
-		}
 
-		// Check if the request contains audio and validate model support
-		const hasAudio = messages.some((msg) => {
-			if (Array.isArray(msg.content)) {
-				return msg.content.some((content) => content.type === "input_audio");
-			}
-			return false;
-		});
+			if (messagesWithMedia.length > 0) {
+				if (!isMediaTypeSupported(model, supportKey)) {
+					return c.json(
+						{
+							error: `Model '${model}' does not support ${name}. Please use a model that supports this feature.`
+						},
+						400
+					);
+				}
 
-		if (hasAudio && !geminiCliModels[model].supportsAudios) {
-			return c.json(
-				{
-					error: `Model '${model}' does not support audio inputs. Please use a vision-capable model like gemini-2.5-pro or gemini-2.5-flash.`
-				},
-				400
-			);
-		}
-
-		// Check if the request contains video and validate model support
-		const hasVideo = messages.some((msg) => {
-			if (Array.isArray(msg.content)) {
-				return msg.content.some((content) => content.type === "input_video");
-			}
-			return false;
-		});
-
-		if (hasVideo && !geminiCliModels[model].supportsVideos) {
-			return c.json(
-				{
-					error: `Model '${model}' does not support video inputs. Please use a vision-capable model like gemini-2.5-pro or gemini-2.5-flash.`
-				},
-				400
-			);
-		}
-
-		// Check if the request contains PDF and validate model support
-		const hasPdf = messages.some((msg) => {
-			if (Array.isArray(msg.content)) {
-				return msg.content.some((content) => content.type === "input_pdf");
-			}
-			return false;
-		});
-
-		if (hasPdf) {
-			if (!geminiCliModels[model].supportsPdfs) {
-				return c.json(
-					{
-						error: `Model '${model}' does not support PDF inputs. Please use a model that supports PDFs like gemini-2.5-pro or gemini-2.5-flash.`
-					},
-					400
-				);
-			}
-
-			// Validate PDF content
-			for (const msg of messages) {
-				if (Array.isArray(msg.content)) {
-					for (const content of msg.content) {
-						if (content.type === "input_pdf" && content.input_pdf?.data) {
-							if (!validatePdfBase64(content.input_pdf.data)) {
-								return c.json(
-									{
-										error: "Invalid PDF data. Please ensure the content is a valid base64 encoded PDF."
-									},
-									400
-								);
+				for (const msg of messagesWithMedia) {
+					for (const content of msg.content as any[]) {
+						if (content.type === type) {
+							const { isValid, error } = validateContent(type, content);
+							if (!isValid) {
+								return c.json({ error }, 400);
 							}
 						}
 					}
@@ -337,7 +289,7 @@ OpenAIRoute.post("/audio/transcriptions", async (c) => {
 		const body = await c.req.parseBody();
 		const file = body["file"];
 		const model = (body["model"] as string) || DEFAULT_MODEL;
-		const prompt = (body["prompt"] as string) || "Transcribe this audio in details.";
+		const prompt = (body["prompt"] as string) || "Transcribe this audio in detail.";
 
 		if (!file || !(file instanceof File)) {
 			return c.json({ error: "File is required" }, 400);
@@ -361,28 +313,9 @@ OpenAIRoute.post("/audio/transcriptions", async (c) => {
 		// Fallback for application/octet-stream
 		if (mimeType === "application/octet-stream" && file.name) {
 			const ext = file.name.split(".").pop()?.toLowerCase();
-			if (ext) {
-				const mimeMap: Record<string, string> = {
-					"mp3": "audio/mpeg",
-					"mp4": "audio/mp4",
-					"mpeg": "audio/mpeg",
-					"mpga": "audio/mpeg",
-					"m4a": "audio/mp4",
-					"wav": "audio/wav",
-					"webm": "audio/webm",
-					"ogg": "audio/ogg",
-					"oga": "audio/ogg",
-					"flac": "audio/flac",
-					"mov": "video/quicktime",
-					"mpg": "video/mpeg",
-					"avi": "video/x-msvideo",
-					"wmv": "video/x-ms-wmv",
-					"flv": "video/x-flv"
-				};
-				if (mimeMap[ext]) {
-					mimeType = mimeMap[ext];
-					console.log(`Detected MIME type from extension .${ext}: ${mimeType}`);
-				}
+			if (ext && MIME_TYPE_MAP[ext]) {
+				mimeType = MIME_TYPE_MAP[ext];
+				console.log(`Detected MIME type from extension .${ext}: ${mimeType}`);
 			}
 		}
 

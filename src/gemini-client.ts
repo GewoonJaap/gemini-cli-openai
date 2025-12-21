@@ -13,8 +13,7 @@ import { AuthManager } from "./auth";
 import { CODE_ASSIST_ENDPOINT, CODE_ASSIST_API_VERSION } from "./config";
 import { REASONING_MESSAGES, REASONING_CHUNK_DELAY, THINKING_CONTENT_CHUNK_SIZE } from "./constants";
 import { geminiCliModels } from "./models";
-import { validateImageUrl } from "./utils/image-utils";
-import { validatePdfBase64 } from "./utils/pdf-utils";
+import { validateContent } from "./utils/validation";
 import { GenerationConfigValidator } from "./helpers/generation-config-validator";
 import { AutoModelSwitchingHelper } from "./helpers/auto-model-switching";
 import { NativeToolsManager } from "./helpers/native-tools-manager";
@@ -248,9 +247,9 @@ export class GeminiApiClient {
 					const imageUrl = content.image_url.url;
 
 					// Validate image URL
-					const validation = validateImageUrl(imageUrl);
-					if (!validation.isValid) {
-						throw new Error(`Invalid image: ${validation.error}`);
+					const { isValid, error, mimeType } = validateContent("image_url", content);
+					if (!isValid) {
+						throw new Error(`Invalid image: ${error}`);
 					}
 
 					if (imageUrl.startsWith("data:")) {
@@ -268,12 +267,13 @@ export class GeminiApiClient {
 						// Handle URL images
 						// Note: For better reliability, you might want to fetch the image
 						// and convert it to base64, as Gemini API might have limitations with external URLs
-						parts.push({
+						const part = {
 							fileData: {
-								mimeType: validation.mimeType || "image/jpeg",
+								mimeType: mimeType || "image/jpeg",
 								fileUri: imageUrl
 							}
-						});
+						};
+						parts.push(part);
 					}
 				} else if (content.type === "input_audio" && content.input_audio) {
 					parts.push({
@@ -294,12 +294,12 @@ export class GeminiApiClient {
 
 						// Add video metadata if present
 						if (content.input_video.videoMetadata) {
-							const { start_offset, end_offset, fps } = content.input_video.videoMetadata;
-							if (start_offset || end_offset || fps ) {
+							const { startOffset, endOffset, fps } = content.input_video.videoMetadata;
+							if (startOffset || endOffset || fps) {
 								part.videoMetadata = {};
 								// Pass strings directly as Gemini API accepts "10s" format
-								if (start_offset) part.videoMetadata.startOffset = start_offset;
-								if (end_offset) part.videoMetadata.endOffset = end_offset;
+								if (startOffset) part.videoMetadata.startOffset = startOffset;
+								if (endOffset) part.videoMetadata.endOffset = endOffset;
 								if (fps) part.videoMetadata.fps = fps;
 							}
 						}
@@ -307,12 +307,13 @@ export class GeminiApiClient {
 					}
 				} else if (content.type === "input_pdf" && content.input_pdf) {
 					if (content.input_pdf.data) {
-						// Handle base64 PDF
-						// Validate PDF content
-						if (!validatePdfBase64(content.input_pdf.data)) {
-							throw new Error("Invalid PDF data. Please ensure the content is a valid base64 encoded PDF.");
+						// Validate PDF
+						const { isValid, error } = validateContent("input_pdf", content);
+						if (!isValid) {
+							throw new Error(`Invalid PDF: ${error}`);
 						}
 
+						// Handle base64 PDF
 						parts.push({
 							inlineData: {
 								mimeType: "application/pdf",
@@ -333,41 +334,6 @@ export class GeminiApiClient {
 		};
 	}
 
-	/**
-	 * Validates if the model supports images.
-	 */
-	private validateImageSupport(modelId: string): boolean {
-		return geminiCliModels[modelId]?.supportsImages || false;
-	}
-
-	/**
-	 * Validates if the model supports audio.
-	 */
-	private validateAudioSupport(modelId: string): boolean {
-		return geminiCliModels[modelId]?.supportsAudios || false;
-	}
-
-	/**
-	 * Validates if the model supports video.
-	 */
-	private validateVideoSupport(modelId: string): boolean {
-		return geminiCliModels[modelId]?.supportsVideos || false;
-	}
-
-	/**
-	 * Validates if the model supports PDF.
-	 */
-	private validatePdfSupport(modelId: string): boolean {
-		return geminiCliModels[modelId]?.supportsPdfs || false;
-	}
-
-	/**
-	 * Validates image content and format using the shared validation utility.
-	 */
-	private validateImageContent(imageUrl: string): boolean {
-		const validation = validateImageUrl(imageUrl);
-		return validation.isValid;
-	}
 
 	/**
 	 * Stream content from Gemini API.
