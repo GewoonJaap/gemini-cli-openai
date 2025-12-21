@@ -1,4 +1,4 @@
-import { geminiCliModels } from '../models';
+import { geminiCliModels, getAllModelIds } from '../models';
 import { ModelInfo } from '../types';
 import { validateImageUrl } from './image-utils';
 import { validatePdfBase64 } from './pdf-utils';
@@ -12,6 +12,22 @@ import { validatePdfBase64 } from './pdf-utils';
  */
 export function isMediaTypeSupported(modelId: string, supportKey: keyof ModelInfo): boolean {
     return !!geminiCliModels[modelId]?.[supportKey];
+}
+
+/**
+ * Validates if a model exists.
+ *
+ * @param modelId The ID of the model to check.
+ * @returns An object with an `isValid` boolean and an optional `error` message.
+ */
+export function validateModel(modelId: string): { isValid: boolean; error?: string } {
+    if (!(modelId in geminiCliModels)) {
+        return {
+            isValid: false,
+            error: `Model '${modelId}' not found. Available models: ${getAllModelIds().join(", ")}`
+        };
+    }
+    return { isValid: true };
 }
 
 /**

@@ -6,7 +6,7 @@ import { DEFAULT_THINKING_BUDGET, MIME_TYPE_MAP } from "../constants";
 import { AuthManager } from "../auth";
 import { GeminiApiClient } from "../gemini-client";
 import { createOpenAIStreamTransformer } from "../stream-transformer";
-import { isMediaTypeSupported, validateContent } from "../utils/validation";
+import { isMediaTypeSupported, validateContent, validateModel } from "../utils/validation";
 import { Buffer } from "node:buffer";
 
 /**
@@ -97,13 +97,9 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 		}
 
 		// Validate model
-		if (!(model in geminiCliModels)) {
-			return c.json(
-				{
-					error: `Model '${model}' not found. Available models: ${getAllModelIds().join(", ")}`
-				},
-				400
-			);
+		const modelValidation = validateModel(model);
+		if (!modelValidation.isValid) {
+			return c.json({ error: modelValidation.error }, 400);
 		}
 
 		// Unified media validation
@@ -295,6 +291,55 @@ OpenAIRoute.post("/audio/transcriptions", async (c) => {
 			return c.json({ error: "File is required" }, 400);
 		}
 
+		// Validate model
+		const modelValidation = validateModel(model);
+		if (!modelValidation.isValid) {
+			return c.json({ error: modelValidation.error }, 400);
+		}
+
+		let mimeType = file.type;
+
+		// Fallback for application/octet-stream
+		if (mimeType === "application/octet-stream" && file.name) {
+			const ext = file.name.split(".").pop()?.toLowerCase();
+			if (ext && MIME_TYPE_MAP[ext]) {
+				mimeType = MIME_TYPE_MAP[ext];
+				console.log(`Detected MIME type from extension .${ext}: ${mimeType}`);
+			}
+		}
+
+		// Check for video or audio support based on MIME type
+		const isVideo = mimeType.startsWith("video/");
+		// gemini can generate transcriptions of videos too
+		const isAudio = mimeType.startsWith("audio/");
+
+		if (isVideo) {
+			if (!isMediaTypeSupported(model, "supportsVideos")) {
+				return c.json(
+					{
+						error: `Model '${model}' does not support video inputs.`
+					},
+					400
+				);
+			}
+		} else if (isAudio) {
+			if (!isMediaTypeSupported(model, "supportsAudios")) {
+				return c.json(
+					{
+						error: `Model '${model}' does not support audio inputs.`
+					},
+					400
+				);
+			}
+		} else {
+			return c.json(
+				{
+					error: `Unsupported media type: ${mimeType}. Only audio and video files are supported.`
+				},
+				400
+			);
+		}
+
 		// Convert File to base64
 		const arrayBuffer = await file.arrayBuffer();
 		console.log(`Processing audio file: size=${arrayBuffer.byteLength} bytes, type=${file.type}`);
@@ -306,17 +351,6 @@ OpenAIRoute.post("/audio/transcriptions", async (c) => {
 			const errorMessage = e instanceof Error ? e.message : String(e);
 			console.error("Base64 conversion failed:", errorMessage);
 			throw new Error(`Failed to process audio file: ${errorMessage}`);
-		}
-		
-		let mimeType = file.type;
-
-		// Fallback for application/octet-stream
-		if (mimeType === "application/octet-stream" && file.name) {
-			const ext = file.name.split(".").pop()?.toLowerCase();
-			if (ext && MIME_TYPE_MAP[ext]) {
-				mimeType = MIME_TYPE_MAP[ext];
-				console.log(`Detected MIME type from extension .${ext}: ${mimeType}`);
-			}
 		}
 
 		// Construct message
