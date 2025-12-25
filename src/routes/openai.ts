@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { Env, ChatCompletionRequest, ChatCompletionResponse, ChatMessage } from "../types";
-import { geminiCliModels, DEFAULT_MODEL, getAllModelIds } from "../models";
+import { Env, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ModelInfo, MessageContent } from "../types";
+import { DEFAULT_MODEL, getAllModelIds } from "../models";
 import { OPENAI_MODEL_OWNER } from "../config";
 import { DEFAULT_THINKING_BUDGET, MIME_TYPE_MAP } from "../constants";
 import { AuthManager } from "../auth";
@@ -105,7 +105,7 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 		// Unified media validation
 		const mediaChecks: {
 			type: string;
-			supportKey: keyof import("../types").ModelInfo;
+			supportKey: keyof ModelInfo;
 			name: string;
 		}[] = [
 			{ type: "image_url", supportKey: "supportsImages", name: "image inputs" },
@@ -130,7 +130,7 @@ OpenAIRoute.post("/chat/completions", async (c) => {
 				}
 
 				for (const msg of messagesWithMedia) {
-					for (const content of msg.content as any[]) {
+					for (const content of msg.content as MessageContent[]) {
 						if (content.type === type) {
 							const { isValid, error } = validateContent(type, content);
 							if (!isValid) {
@@ -343,7 +343,7 @@ OpenAIRoute.post("/audio/transcriptions", async (c) => {
 		// Convert File to base64
 		const arrayBuffer = await file.arrayBuffer();
 		console.log(`Processing audio file: size=${arrayBuffer.byteLength} bytes, type=${file.type}`);
-		
+
 		let base64Audio: string;
 		try {
 			base64Audio = Buffer.from(arrayBuffer).toString("base64");

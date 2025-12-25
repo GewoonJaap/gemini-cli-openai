@@ -47,7 +47,7 @@ export const geminiCliModels: Record<string, ModelInfo> = {
 		supportsImages: true,
 		supportsAudios: true,
 		supportsVideos: true,
-		supportsPdfs: true,  // it actually supports pdf, docs are wrong https://ai.google.dev/gemini-api/docs/models?hl=en#gemini-2.5-flash
+		supportsPdfs: true, // it actually supports pdf, docs are wrong https://ai.google.dev/gemini-api/docs/models?hl=en#gemini-2.5-flash
 		supportsPromptCache: false,
 		inputPrice: 0,
 		outputPrice: 0,

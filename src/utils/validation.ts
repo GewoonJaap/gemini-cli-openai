@@ -1,7 +1,7 @@
-import { geminiCliModels, getAllModelIds } from '../models';
-import { ModelInfo } from '../types';
-import { validateImageUrl } from './image-utils';
-import { validatePdfBase64 } from './pdf-utils';
+import { geminiCliModels, getAllModelIds } from "../models";
+import { ModelInfo } from "../types";
+import { validateImageUrl } from "./image-utils";
+import { validatePdfBase64 } from "./pdf-utils";
 
 /**
  * Checks if a given model supports a specific media type.
@@ -11,7 +11,7 @@ import { validatePdfBase64 } from './pdf-utils';
  * @returns True if the model supports the media type, false otherwise.
  */
 export function isMediaTypeSupported(modelId: string, supportKey: keyof ModelInfo): boolean {
-    return !!geminiCliModels[modelId]?.[supportKey];
+	return !!geminiCliModels[modelId]?.[supportKey];
 }
 
 /**
@@ -21,13 +21,13 @@ export function isMediaTypeSupported(modelId: string, supportKey: keyof ModelInf
  * @returns An object with an `isValid` boolean and an optional `error` message.
  */
 export function validateModel(modelId: string): { isValid: boolean; error?: string } {
-    if (!(modelId in geminiCliModels)) {
-        return {
-            isValid: false,
-            error: `Model '${modelId}' not found. Available models: ${getAllModelIds().join(", ")}`
-        };
-    }
-    return { isValid: true };
+	if (!(modelId in geminiCliModels)) {
+		return {
+			isValid: false,
+			error: `Model '${modelId}' not found. Available models: ${getAllModelIds().join(", ")}`
+		};
+	}
+	return { isValid: true };
 }
 
 /**
@@ -37,10 +37,7 @@ export function validateModel(modelId: string): { isValid: boolean; error?: stri
  * @param content The message content object to validate.
  * @returns An object with an `isValid` boolean and an optional `error` message.
  */
-export function validateContent(
-	type: string,
-	content: any
-): { isValid: boolean; error?: string; mimeType?: string } {
+export function validateContent(type: string, content: any): { isValid: boolean; error?: string; mimeType?: string } {
 	switch (type) {
 		case "image_url":
 			// Extract URL from content object
@@ -54,12 +51,12 @@ export function validateContent(
 		case "input_pdf":
 			// Extract PDF data from content object
 			const pdfData = content.input_pdf?.data;
-            if (!validatePdfBase64(pdfData)) {
-                return { isValid: false, error: 'Invalid PDF data. Please ensure the content is a valid base64 encoded PDF.' };
-            }
-            return { isValid: true };
+			if (!validatePdfBase64(pdfData)) {
+				return { isValid: false, error: "Invalid PDF data. Please ensure the content is a valid base64 encoded PDF." };
+			}
+			return { isValid: true };
 
-        default:
-            return { isValid: true }; // No specific validation for this type
-    }
+		default:
+			return { isValid: true }; // No specific validation for this type
+	}
 }

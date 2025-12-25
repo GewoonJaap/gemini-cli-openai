@@ -66,7 +66,7 @@ export interface GeminiPart {
 	// all must not exceed video real values
 	videoMetadata?: {
 		startOffset?: string; // string in seconds (40s)
-		endOffset?: string;   // string in seconds (80s)
+		endOffset?: string; // string in seconds (80s)
 		fps?: number;
 	};
 }
@@ -333,7 +333,6 @@ export class GeminiApiClient {
 			parts: [{ text: String(msg.content) }]
 		};
 	}
-
 
 	/**
 	 * Stream content from Gemini API.

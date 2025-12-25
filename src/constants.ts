@@ -71,19 +71,19 @@ export const NATIVE_TOOLS_DEFAULTS = {
 } as const;
 
 export const MIME_TYPE_MAP: Record<string, string> = {
-	"mp3": "audio/mpeg",
-	"mp4": "audio/mp4",
-	"mpeg": "audio/mpeg",
-	"mpga": "audio/mpeg",
-	"m4a": "audio/mp4",
-	"wav": "audio/wav",
-	"webm": "audio/webm",
-	"ogg": "audio/ogg",
-	"oga": "audio/ogg",
-	"flac": "audio/flac",
-	"mov": "video/quicktime",
-	"mpg": "video/mpeg",
-	"avi": "video/x-msvideo",
-	"wmv": "video/x-ms-wmv",
-	"flv": "video/x-flv"
+	mp3: "audio/mpeg",
+	mp4: "audio/mp4",
+	mpeg: "audio/mpeg",
+	mpga: "audio/mpeg",
+	m4a: "audio/mp4",
+	wav: "audio/wav",
+	webm: "audio/webm",
+	ogg: "audio/ogg",
+	oga: "audio/ogg",
+	flac: "audio/flac",
+	mov: "video/quicktime",
+	mpg: "video/mpeg",
+	avi: "video/x-msvideo",
+	wmv: "video/x-ms-wmv",
+	flv: "video/x-flv"
 };
