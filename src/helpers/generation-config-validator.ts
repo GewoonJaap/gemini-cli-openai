@@ -8,6 +8,8 @@ import {
 import { ChatCompletionRequest, Env, EffortLevel, SafetyThreshold } from "../types";
 import { NativeToolsConfiguration } from "../types/native-tools";
 
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 /**
  * Helper class to validate and correct generation configurations for different Gemini models.
  * Handles model-specific limitations and provides sensible defaults.
@@ -43,6 +45,39 @@ export class GenerationConfigValidator {
 	 */
 	static isValidEffortLevel(value: unknown): value is EffortLevel {
 		return typeof value === "string" && ["none", "low", "medium", "high"].includes(value);
+	}
+
+	/**
+	 * Recursively cleans a schema object to remove fields not supported by Gemini
+	 * (like keys starting with $, strict, const, etc.)
+	 * @param schema - The schema to clean
+	 * @returns The cleaned schema
+	 */
+	private static cleanSchema(schema: JsonValue): JsonValue {
+		if (!schema || typeof schema !== "object") return schema;
+
+		if (Array.isArray(schema)) {
+			return schema.map((item) => this.cleanSchema(item));
+		}
+
+		const cleaned: { [key: string]: JsonValue } = {};
+		for (const [key, value] of Object.entries(schema)) {
+			// Remove OpenAI/JSON Schema specific fields not supported by Gemini
+			if (
+				key.startsWith("$") ||
+				key === "strict" ||
+				key === "const" ||
+				key === "additionalProperties" ||
+				key === "exclusiveMaximum" ||
+				key === "exclusiveMinimum"
+			) {
+				continue;
+			}
+
+			// Recurse for nested objects (properties, items, etc.)
+			cleaned[key] = this.cleanSchema(value);
+		}
+		return cleaned;
 	}
 
 	/**
@@ -193,20 +228,8 @@ export class GenerationConfigValidator {
 		// Add tools configuration if provided
 		if (Array.isArray(options.tools) && options.tools.length > 0) {
 			const functionDeclarations = options.tools.map((tool) => {
-				let parameters = tool.function.parameters;
-				// Filter parameters for Claude-style compatibility by removing keys starting with '$'
-				if (parameters) {
-					const before = parameters;
-					parameters = Object.keys(parameters)
-						.filter((key) => !key.startsWith("$"))
-						.reduce(
-							(after, key) => {
-								after[key] = before[key];
-								return after;
-							},
-							{} as Record<string, unknown>
-						);
-				}
+				// Recursively clean the parameters
+				const parameters = this.cleanSchema(tool.function.parameters as JsonValue); // Start the recursion with a cast, as external types might be loose
 				return {
 					name: tool.function.name,
 					description: tool.function.description,
@@ -242,14 +265,10 @@ export class GenerationConfigValidator {
 		toolConfig: unknown | undefined;
 	} {
 		if (config.useCustomTools && config.customTools && config.customTools.length > 0) {
-			const { toolConfig } = this.createValidateTools(options);
+			const { tools, toolConfig } = this.createValidateTools(options);
 			return {
-				tools: [
-					{
-						functionDeclarations: config.customTools.map((t) => t.function)
-					}
-				],
-				toolConfig: toolConfig
+				tools,
+				toolConfig
 			};
 		}
 
