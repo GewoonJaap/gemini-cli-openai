@@ -37,7 +37,10 @@ export function validateModel(modelId: string): { isValid: boolean; error?: stri
  * @param content The message content object to validate.
  * @returns An object with an `isValid` boolean and an optional `error` message.
  */
-export function validateContent(type: string, content: MessageContent): { isValid: boolean; error?: string; mimeType?: string } {
+export function validateContent(
+	type: string,
+	content: MessageContent
+): { isValid: boolean; error?: string; mimeType?: string } {
 	switch (type) {
 		case "image_url":
 			// Extract URL from content object
