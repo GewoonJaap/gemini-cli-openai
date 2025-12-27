@@ -1,5 +1,5 @@
 import { geminiCliModels, getAllModelIds } from "../models";
-import { ModelInfo } from "../types";
+import { ModelInfo, MessageContent } from "../types";
 import { validateImageUrl } from "./image-utils";
 import { validatePdfBase64 } from "./pdf-utils";
 
@@ -37,11 +37,14 @@ export function validateModel(modelId: string): { isValid: boolean; error?: stri
  * @param content The message content object to validate.
  * @returns An object with an `isValid` boolean and an optional `error` message.
  */
-export function validateContent(type: string, content: any): { isValid: boolean; error?: string; mimeType?: string } {
+export function validateContent(type: string, content: MessageContent): { isValid: boolean; error?: string; mimeType?: string } {
 	switch (type) {
 		case "image_url":
 			// Extract URL from content object
 			const imageUrl = content.image_url?.url;
+			if (!imageUrl) {
+				return { isValid: false, error: "Missing image URL." };
+			}
 			const validation = validateImageUrl(imageUrl);
 			if (!validation.isValid) {
 				return { isValid: false, error: "Invalid image URL or format." };
@@ -51,6 +54,9 @@ export function validateContent(type: string, content: any): { isValid: boolean;
 		case "input_pdf":
 			// Extract PDF data from content object
 			const pdfData = content.input_pdf?.data;
+			if (!pdfData) {
+				return { isValid: false, error: "Missing PDF data." };
+			}
 			if (!validatePdfBase64(pdfData)) {
 				return { isValid: false, error: "Invalid PDF data. Please ensure the content is a valid base64 encoded PDF." };
 			}

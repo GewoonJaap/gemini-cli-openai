@@ -15,7 +15,7 @@ export function validatePdfBase64(base64String: string): boolean {
 		const decoded = atob(cleanBase64.substring(0, 20));
 
 		return decoded.startsWith("%PDF-");
-	} catch (e) {
+	} catch {
 		return false;
 	}
 }
