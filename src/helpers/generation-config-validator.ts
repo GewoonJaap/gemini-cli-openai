@@ -61,13 +61,7 @@ export class GenerationConfigValidator {
 		}
 
 		const cleaned: { [key: string]: JsonValue } = {};
-		const unsupportedKeys = [
-			"strict",
-			"const",
-			"additionalProperties",
-			"exclusiveMaximum",
-			"exclusiveMinimum",
-		];
+		const unsupportedKeys = ["strict", "const", "additionalProperties", "exclusiveMaximum", "exclusiveMinimum"];
 
 		for (const [key, value] of Object.entries(schema)) {
 			// Remove OpenAI/JSON Schema specific fields not supported by Gemini
