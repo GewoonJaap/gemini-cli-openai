@@ -9,6 +9,45 @@ import {
 	KV_TOKEN_KEY
 } from "./config";
 
+/**
+ * Validates that an object conforms to the OAuth2Credentials interface.
+ * @param credentials The object to validate
+ * @param sourceName Name of the source for error reporting
+ * @throws Error if validation fails
+ */
+function validateOAuth2Credentials(credentials: any, sourceName: string): OAuth2Credentials {
+	// Check if it's an object
+	if (typeof credentials !== 'object' || credentials === null) {
+		throw new Error(`${sourceName} must be a JSON object with OAuth2 credentials.`);
+	}
+
+	// Check required fields
+	const requiredFields: (keyof OAuth2Credentials)[] = [
+		'access_token', 'refresh_token', 'scope', 'token_type', 'id_token', 'expiry_date'
+	];
+
+	const missingFields = requiredFields.filter(field => {
+		const value = credentials[field];
+		// Check if field exists and has valid type
+		if (field === 'expiry_date') {
+			return value === undefined || typeof value !== 'number' || isNaN(value);
+		}
+		return value === undefined || typeof value !== 'string';
+	});
+
+	if (missingFields.length > 0) {
+		throw new Error(`${sourceName} is missing required fields: ${missingFields.join(', ')}. ` +
+		               `OAuth2 credentials must include: ${requiredFields.join(', ')}`);
+	}
+
+	// Check expiry_date is a valid timestamp
+	if (typeof credentials.expiry_date !== 'number' || isNaN(credentials.expiry_date)) {
+		throw new Error(`${sourceName} has invalid expiry_date. Must be a valid number.`);
+	}
+
+	return credentials as OAuth2Credentials;
+}
+
 // Auth-related interfaces
 interface TokenRefreshResponse {
 	access_token: string;
@@ -332,7 +371,7 @@ export class AuthManager {
 
 			try {
 				const cred = JSON.parse(credVar);
-				individualCreds.push(cred);
+				individualCreds.push(validateOAuth2Credentials(cred, `GCP_SERVICE_ACCOUNTS_${index}`));
 				index++;
 			} catch (e) {
 				console.error(`Failed to parse GCP_SERVICE_ACCOUNTS_${index}:`, e);
@@ -348,10 +387,12 @@ export class AuthManager {
 		if (this.env.GCP_SERVICE_ACCOUNTS && typeof this.env.GCP_SERVICE_ACCOUNTS === 'string') {
 			// Multiple credentials provided as JSON array
 			try {
-				this.credentials = JSON.parse(this.env.GCP_SERVICE_ACCOUNTS);
-				if (!Array.isArray(this.credentials)) {
+				const parsedCreds = JSON.parse(this.env.GCP_SERVICE_ACCOUNTS);
+				if (!Array.isArray(parsedCreds)) {
 					throw new Error("GCP_SERVICE_ACCOUNTS must be a JSON array");
 				}
+				// Validate each credential in the array
+				this.credentials = parsedCreds.map((cred, index) => validateOAuth2Credentials(cred, `GCP_SERVICE_ACCOUNTS[${index}]`));
 				return;
 			} catch (e) {
 				console.error("Failed to parse GCP_SERVICE_ACCOUNTS:", e);
@@ -363,7 +404,7 @@ export class AuthManager {
 			// Single credential provided (legacy support)
 			try {
 				const singleCred = JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
-				this.credentials = [singleCred];
+				this.credentials = [validateOAuth2Credentials(singleCred, "GCP_SERVICE_ACCOUNT")];
 				return;
 			} catch (e) {
 				console.error("Failed to parse GCP_SERVICE_ACCOUNT:", e);
@@ -397,7 +438,8 @@ export class AuthManager {
 			// If rotation is disabled or no credentials, try to use GCP_SERVICE_ACCOUNT
 			if (this.env.GCP_SERVICE_ACCOUNT) {
 				try {
-					return JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
+					const parsedCred = JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
+					return validateOAuth2Credentials(parsedCred, "GCP_SERVICE_ACCOUNT");
 				} catch (e) {
 					console.error("Failed to parse GCP_SERVICE_ACCOUNT:", e);
 					throw new Error("Invalid GCP_SERVICE_ACCOUNT format. Must be a JSON object with OAuth2 credentials.");
