@@ -40,6 +40,9 @@ export interface Env {
 	ENABLE_INLINE_CITATIONS?: string; // Enable inline citations in responses (default: false)
 	INCLUDE_GROUNDING_METADATA?: string; // Include grounding metadata in responses (default: true)
 	INCLUDE_SEARCH_ENTRY_POINT?: string; // Include search entry point HTML (default: false)
+
+	// Index signature to allow dynamic property access for individual service accounts
+	[key: `GCP_SERVICE_ACCOUNTS_${number}`]: string | undefined;
 }
 
 // --- OAuth2 Credentials Interface ---
