@@ -295,9 +295,12 @@ export class AuthManager {
 			: "round-robin";
 
 		// Set max retries per credential (default to 3)
-		this.rotationConfig.maxRetriesPerCredential = this.env.MAX_RETRIES_PER_CREDENTIAL
-			? parseInt(this.env.MAX_RETRIES_PER_CREDENTIAL) || 3
-			: 3;
+		if (this.env.MAX_RETRIES_PER_CREDENTIAL) {
+			const parsedValue = parseInt(this.env.MAX_RETRIES_PER_CREDENTIAL, 10);
+			this.rotationConfig.maxRetriesPerCredential = isNaN(parsedValue) ? 3 : parsedValue;
+		} else {
+			this.rotationConfig.maxRetriesPerCredential = 3;
+		}
 
 		// Load credentials
 		await this.loadCredentials();
@@ -416,10 +419,42 @@ export class AuthManager {
 		if (currentHealth.isBlocked) {
 			console.log(`Credential ${this.currentCredentialIndex} is blocked, switching to next credential`);
 			await this.rotateToNextCredential();
-			return this.getCurrentCredentials();
+			return this.getCurrentCredentialsIterative();
 		}
 
 		return currentCred;
+	}
+
+	/**
+	 * Get current credentials using iterative approach to avoid stack overflow.
+	 */
+	private async getCurrentCredentialsIterative(): Promise<OAuth2Credentials> {
+		let attempts = 0;
+		const maxAttempts = this.credentials.length;
+
+		while (attempts < maxAttempts) {
+			attempts++;
+
+			// Get current credential
+			const currentCred = this.credentials[this.currentCredentialIndex];
+			const currentHealth = this.credentialHealth[this.currentCredentialIndex];
+
+			// Update usage stats
+			currentHealth.lastUsed = Date.now();
+
+			// Check if credential is blocked
+			if (currentHealth.isBlocked) {
+				console.log(`Credential ${this.currentCredentialIndex} is blocked, switching to next credential`);
+				await this.rotateToNextCredential();
+				continue; // Try next credential
+			}
+
+			// Found a valid credential
+			return currentCred;
+		}
+
+		// If we've tried all credentials and they're all blocked, throw an error
+		throw new Error("All credentials are blocked. No available credentials to use.");
 	}
 
 	/**
