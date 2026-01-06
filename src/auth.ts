@@ -302,8 +302,10 @@ export class AuthManager {
 		// Load credentials
 		await this.loadCredentials();
 
-		// Initialize credential health tracking
-		this.initializeCredentialHealth();
+		// Initialize credential health tracking only if not already initialized
+		if (this.credentialHealth.length === 0) {
+			this.initializeCredentialHealth();
+		}
 
 		console.log(`Credential rotation enabled with strategy: ${this.rotationConfig.strategy}`);
 		console.log(`Max retries per credential: ${this.rotationConfig.maxRetriesPerCredential}`);
@@ -389,11 +391,18 @@ export class AuthManager {
 	 */
 	private async getCurrentCredentials(): Promise<OAuth2Credentials> {
 		if (!this.rotationConfig.enabled || this.credentials.length === 0) {
-			// If rotation is disabled or no credentials, use the first credential
-			if (this.credentials.length === 0 && this.env.GCP_SERVICE_ACCOUNT) {
-				return JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
+			// If rotation is disabled or no credentials, try to use GCP_SERVICE_ACCOUNT
+			if (this.env.GCP_SERVICE_ACCOUNT) {
+				try {
+					return JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
+				} catch (e) {
+					console.error("Failed to parse GCP_SERVICE_ACCOUNT:", e);
+					throw new Error("Invalid GCP_SERVICE_ACCOUNT format. Must be a JSON object with OAuth2 credentials.");
+				}
 			}
-			return this.credentials[0] || JSON.parse(this.env.GCP_SERVICE_ACCOUNT || "{}");
+
+			// No credentials available - this is a critical error
+			throw new Error("No OAuth2 credentials available. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables.");
 		}
 
 		// Get current credential
