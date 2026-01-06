@@ -254,7 +254,7 @@ export class AuthManager {
 			}
 
 			// Handle rate limiting and other errors with credential rotation
-			if ((response.status === 429 || response.status === 503) && this.rotationConfig.enabled) {
+			if ((response.status === 429 || response.status === 503) && this.rotationConfig.enabled && !isRetry) {
 				console.log(`Got ${response.status} error, rotating credentials...`);
 				await this.handleCredentialFailure(`HTTP ${response.status} error`);
 				await this.initializeAuth(); // This will switch to next credential
