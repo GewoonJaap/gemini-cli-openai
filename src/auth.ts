@@ -254,7 +254,7 @@ export class AuthManager {
 			}
 
 			// Handle rate limiting and other errors with credential rotation
-			if ((response.status === 429 || response.status === 503) && this.rotationConfig.enabled) {
+			if ((response.status === 429 || response.status === 503) && this.rotationConfig.enabled && !isRetry) {
 				console.log(`Got ${response.status} error, rotating credentials...`);
 				await this.handleCredentialFailure(`HTTP ${response.status} error`);
 				await this.initializeAuth(); // This will switch to next credential
@@ -295,15 +295,20 @@ export class AuthManager {
 			: "round-robin";
 
 		// Set max retries per credential (default to 3)
-		this.rotationConfig.maxRetriesPerCredential = this.env.MAX_RETRIES_PER_CREDENTIAL
-			? parseInt(this.env.MAX_RETRIES_PER_CREDENTIAL) || 3
-			: 3;
+		if (this.env.MAX_RETRIES_PER_CREDENTIAL) {
+			const parsedValue = parseInt(this.env.MAX_RETRIES_PER_CREDENTIAL, 10);
+			this.rotationConfig.maxRetriesPerCredential = isNaN(parsedValue) ? 3 : parsedValue;
+		} else {
+			this.rotationConfig.maxRetriesPerCredential = 3;
+		}
 
 		// Load credentials
 		await this.loadCredentials();
 
-		// Initialize credential health tracking
-		this.initializeCredentialHealth();
+		// Initialize credential health tracking only if not already initialized
+		if (this.credentialHealth.length === 0) {
+			this.initializeCredentialHealth();
+		}
 
 		console.log(`Credential rotation enabled with strategy: ${this.rotationConfig.strategy}`);
 		console.log(`Max retries per credential: ${this.rotationConfig.maxRetriesPerCredential}`);
@@ -389,11 +394,18 @@ export class AuthManager {
 	 */
 	private async getCurrentCredentials(): Promise<OAuth2Credentials> {
 		if (!this.rotationConfig.enabled || this.credentials.length === 0) {
-			// If rotation is disabled or no credentials, use the first credential
-			if (this.credentials.length === 0 && this.env.GCP_SERVICE_ACCOUNT) {
-				return JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
+			// If rotation is disabled or no credentials, try to use GCP_SERVICE_ACCOUNT
+			if (this.env.GCP_SERVICE_ACCOUNT) {
+				try {
+					return JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
+				} catch (e) {
+					console.error("Failed to parse GCP_SERVICE_ACCOUNT:", e);
+					throw new Error("Invalid GCP_SERVICE_ACCOUNT format. Must be a JSON object with OAuth2 credentials.");
+				}
 			}
-			return this.credentials[0] || JSON.parse(this.env.GCP_SERVICE_ACCOUNT || "{}");
+
+			// No credentials available - this is a critical error
+			throw new Error("No OAuth2 credentials available. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables.");
 		}
 
 		// Get current credential
@@ -407,10 +419,42 @@ export class AuthManager {
 		if (currentHealth.isBlocked) {
 			console.log(`Credential ${this.currentCredentialIndex} is blocked, switching to next credential`);
 			await this.rotateToNextCredential();
-			return this.getCurrentCredentials();
+			return this.getCurrentCredentialsIterative();
 		}
 
 		return currentCred;
+	}
+
+	/**
+	 * Get current credentials using iterative approach to avoid stack overflow.
+	 */
+	private async getCurrentCredentialsIterative(): Promise<OAuth2Credentials> {
+		let attempts = 0;
+		const maxAttempts = this.credentials.length;
+
+		while (attempts < maxAttempts) {
+			attempts++;
+
+			// Get current credential
+			const currentCred = this.credentials[this.currentCredentialIndex];
+			const currentHealth = this.credentialHealth[this.currentCredentialIndex];
+
+			// Update usage stats
+			currentHealth.lastUsed = Date.now();
+
+			// Check if credential is blocked
+			if (currentHealth.isBlocked) {
+				console.log(`Credential ${this.currentCredentialIndex} is blocked, switching to next credential`);
+				await this.rotateToNextCredential();
+				continue; // Try next credential
+			}
+
+			// Found a valid credential
+			return currentCred;
+		}
+
+		// If we've tried all credentials and they're all blocked, throw an error
+		throw new Error("All credentials are blocked. No available credentials to use.");
 	}
 
 	/**
