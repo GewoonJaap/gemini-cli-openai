@@ -17,7 +17,7 @@ import {
  */
 function validateOAuth2Credentials(credentials: unknown, sourceName: string): OAuth2Credentials {
 	// Check if it's an object
-	if (typeof credentials !== 'object' || credentials === null) {
+	if (typeof credentials !== "object" || credentials === null) {
 		throw new Error(`${sourceName} must be a JSON object with OAuth2 credentials.`);
 	}
 
@@ -26,34 +26,41 @@ function validateOAuth2Credentials(credentials: unknown, sourceName: string): OA
 
 	// Check required fields
 	const requiredFields: (keyof OAuth2Credentials)[] = [
-		'access_token', 'refresh_token', 'scope', 'token_type', 'id_token', 'expiry_date'
+		"access_token",
+		"refresh_token",
+		"scope",
+		"token_type",
+		"id_token",
+		"expiry_date"
 	];
 
-	const missingFields = requiredFields.filter(field => {
+	const missingFields = requiredFields.filter((field) => {
 		const value = creds[field];
 		// Check if field exists and has valid type
-		if (field === 'expiry_date') {
-			return value === undefined || typeof value !== 'number' || isNaN(value);
+		if (field === "expiry_date") {
+			return value === undefined || typeof value !== "number" || isNaN(value);
 		}
-		return value === undefined || typeof value !== 'string';
+		return value === undefined || typeof value !== "string";
 	});
 
 	if (missingFields.length > 0) {
-		throw new Error(`${sourceName} is missing required fields: ${missingFields.join(', ')}. ` +
-		               `OAuth2 credentials must include: ${requiredFields.join(', ')}`);
+		throw new Error(
+			`${sourceName} is missing required fields: ${missingFields.join(", ")}. ` +
+				`OAuth2 credentials must include: ${requiredFields.join(", ")}`
+		);
 	}
 
 	// Additional validation for string fields
-	for (const field of ['access_token', 'refresh_token', 'scope', 'token_type', 'id_token'] as const) {
+	for (const field of ["access_token", "refresh_token", "scope", "token_type", "id_token"] as const) {
 		const value = creds[field];
-		if (typeof value !== 'string' || value.trim() === '') {
+		if (typeof value !== "string" || value.trim() === "") {
 			throw new Error(`${sourceName}.${field} must be a non-empty string`);
 		}
 	}
 
 	// Additional validation for expiry_date
 	const expiryDate = creds.expiry_date;
-	if (typeof expiryDate !== 'number' || isNaN(expiryDate) || expiryDate <= 0) {
+	if (typeof expiryDate !== "number" || isNaN(expiryDate) || expiryDate <= 0) {
 		throw new Error(`${sourceName}.expiry_date must be a positive number`);
 	}
 
@@ -174,7 +181,9 @@ export class AuthManager {
 				const timeUntilExpiry = cachedTokenData.expiry_date - Date.now();
 				if (timeUntilExpiry > TOKEN_BUFFER_TIME) {
 					this.accessToken = cachedTokenData.access_token;
-					console.log(`Using cached token for credential ${index}, valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`);
+					console.log(
+						`Using cached token for credential ${index}, valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`
+					);
 					return { index, token: cachedTokenData.access_token };
 				}
 				console.log(`Cached token for credential ${index} expired or expiring soon`);
@@ -198,7 +207,9 @@ export class AuthManager {
 						const timeUntilExpiry = cachedTokenData.expiry_date - Date.now();
 						if (timeUntilExpiry > TOKEN_BUFFER_TIME) {
 							this.accessToken = cachedTokenData.access_token;
-							console.log(`Using cached token for credential ${index}, valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`);
+							console.log(
+								`Using cached token for credential ${index}, valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`
+							);
 							return { index, token: cachedTokenData.access_token };
 						}
 						console.log(`Cached token for credential ${index} expired or expiring soon`);
@@ -213,7 +224,9 @@ export class AuthManager {
 			if (timeUntilExpiry > TOKEN_BUFFER_TIME) {
 				// Current token is still valid, cache it and use it
 				this.accessToken = currentCreds.access_token;
-				console.log(`Current token for credential ${index} is valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`);
+				console.log(
+					`Current token for credential ${index} is valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`
+				);
 
 				// Cache the token in KV storage
 				await this.cacheTokenInKV(currentCreds.access_token, currentCreds.expiry_date, index);
@@ -415,9 +428,8 @@ export class AuthManager {
 		}
 
 		// Set rotation strategy (default to round-robin)
-		this.rotationConfig.strategy = this.env.CREDENTIAL_ROTATION_STRATEGY === "rate-limit"
-			? "rate-limit"
-			: "round-robin";
+		this.rotationConfig.strategy =
+			this.env.CREDENTIAL_ROTATION_STRATEGY === "rate-limit" ? "rate-limit" : "round-robin";
 
 		// Set max retries per credential (default to 3)
 		if (this.env.MAX_RETRIES_PER_CREDENTIAL) {
@@ -451,7 +463,7 @@ export class AuthManager {
 		while (true) {
 			const credVarKey = `GCP_SERVICE_ACCOUNTS_${index}` as keyof Env;
 			const credVar = this.env[credVarKey];
-			if (!credVar || typeof credVar !== 'string') {
+			if (!credVar || typeof credVar !== "string") {
 				break;
 			}
 
@@ -470,7 +482,7 @@ export class AuthManager {
 			return;
 		}
 
-		if (this.env.GCP_SERVICE_ACCOUNTS && typeof this.env.GCP_SERVICE_ACCOUNTS === 'string') {
+		if (this.env.GCP_SERVICE_ACCOUNTS && typeof this.env.GCP_SERVICE_ACCOUNTS === "string") {
 			// Multiple credentials provided as JSON array
 			try {
 				const parsedCreds = JSON.parse(this.env.GCP_SERVICE_ACCOUNTS);
@@ -478,7 +490,9 @@ export class AuthManager {
 					throw new Error("GCP_SERVICE_ACCOUNTS must be a JSON array");
 				}
 				// Validate each credential in the array
-				this.credentials = parsedCreds.map((cred, index) => validateOAuth2Credentials(cred, `GCP_SERVICE_ACCOUNTS[${index}]`));
+				this.credentials = parsedCreds.map((cred, index) =>
+					validateOAuth2Credentials(cred, `GCP_SERVICE_ACCOUNTS[${index}]`)
+				);
 				return;
 			} catch (e) {
 				console.error("Failed to parse GCP_SERVICE_ACCOUNTS:", e);
@@ -486,7 +500,7 @@ export class AuthManager {
 			}
 		}
 
-		if (this.env.GCP_SERVICE_ACCOUNT && typeof this.env.GCP_SERVICE_ACCOUNT === 'string') {
+		if (this.env.GCP_SERVICE_ACCOUNT && typeof this.env.GCP_SERVICE_ACCOUNT === "string") {
 			// Single credential provided (legacy support)
 			try {
 				const singleCred = JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
@@ -498,7 +512,9 @@ export class AuthManager {
 			}
 		}
 
-		throw new Error("No OAuth2 credentials provided. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables.");
+		throw new Error(
+			"No OAuth2 credentials provided. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables."
+		);
 	}
 
 	/**
@@ -507,15 +523,18 @@ export class AuthManager {
 	private initializeCredentialHealth(): void {
 		// Clean up any existing credential health data to prevent memory leaks
 		// Ensure we only track health for credentials that actually exist
-		this.credentialHealth = this.credentials.map((_, index) => ({
-			credentialIndex: index,
-			successCount: 0,
-			failureCount: 0,
-			lastUsed: 0,
-			lastFailure: undefined,
-			lastFailureReason: undefined,
-			isBlocked: false
-		}));
+		this.credentialHealth = [];
+		for (let index = 0; index < this.credentials.length; index++) {
+			this.credentialHealth.push({
+				credentialIndex: index,
+				successCount: 0,
+				failureCount: 0,
+				lastUsed: 0,
+				lastFailure: undefined,
+				lastFailureReason: undefined,
+				isBlocked: false
+			});
+		}
 
 		// Log initialization for debugging
 		console.log(`Initialized credential health tracking for ${this.credentials.length} credentials`);
@@ -562,7 +581,9 @@ export class AuthManager {
 		}
 
 		// No credentials available - this is a critical error
-		throw new Error("No OAuth2 credentials available. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables.");
+		throw new Error(
+			"No OAuth2 credentials available. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables."
+		);
 	}
 
 	/**
@@ -598,7 +619,7 @@ export class AuthManager {
 			} else {
 				// Rate-limit based rotation - find the healthiest credential
 				const healthyCredentials = this.credentialHealth
-					.filter(health => !health.isBlocked)
+					.filter((health) => !health.isBlocked)
 					.sort((a, b) => {
 						// Sort by failure count (ascending) and last used (ascending)
 						return a.failureCount - b.failureCount || a.lastUsed - b.lastUsed;
@@ -609,7 +630,7 @@ export class AuthManager {
 				} else {
 					// All credentials are blocked, reset all and start from beginning
 					console.log("All credentials blocked, performing reset...");
-					this.credentialHealth.forEach(health => {
+					this.credentialHealth.forEach((health) => {
 						health.isBlocked = false;
 						health.failureCount = 0;
 						health.lastFailure = undefined;

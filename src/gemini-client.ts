@@ -597,7 +597,7 @@ export class GeminiApiClient {
 					await this.authManager.clearTokenCache(credentialIndex);
 
 					const { index: newIndex, token: newToken } = await this.authManager.initializeAuth();
-					
+
 					// If we successfully rotated to a different credential, retry with it
 					if (newIndex !== credentialIndex) {
 						console.log("Credential rotated, retrying request...");
@@ -613,17 +613,15 @@ export class GeminiApiClient {
 						);
 						return;
 					}
-					console.log("Credential did not rotate (maybe only one credential or all blocked), proceeding to model switching...");
+					console.log(
+						"Credential did not rotate (maybe only one credential or all blocked), proceeding to model switching..."
+					);
 				}
 			}
 
 			// Handle rate limiting with auto model switching
 			const currentModel = (streamRequest as { model: string }).model;
-			if (
-				this.autoSwitchHelper.isRateLimitStatus(response.status) &&
-				originalModel &&
-				currentModel === originalModel
-			) {
+			if (this.autoSwitchHelper.isRateLimitStatus(response.status) && originalModel && currentModel === originalModel) {
 				const fallbackModel = this.autoSwitchHelper.getFallbackModel(originalModel);
 				if (fallbackModel && this.autoSwitchHelper.isEnabled()) {
 					console.log(
