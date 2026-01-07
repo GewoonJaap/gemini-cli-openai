@@ -9,6 +9,64 @@ import {
 	KV_TOKEN_KEY
 } from "./config";
 
+/**
+ * Validates that an object conforms to the OAuth2Credentials interface.
+ * @param credentials The object to validate
+ * @param sourceName Name of the source for error reporting
+ * @throws Error if validation fails
+ */
+function validateOAuth2Credentials(credentials: unknown, sourceName: string): OAuth2Credentials {
+	// Check if it's an object
+	if (typeof credentials !== 'object' || credentials === null) {
+		throw new Error(`${sourceName} must be a JSON object with OAuth2 credentials.`);
+	}
+
+	// Type guard to ensure credentials is an object with the right structure
+	const creds = credentials as Record<string, unknown>;
+
+	// Check required fields
+	const requiredFields: (keyof OAuth2Credentials)[] = [
+		'access_token', 'refresh_token', 'scope', 'token_type', 'id_token', 'expiry_date'
+	];
+
+	const missingFields = requiredFields.filter(field => {
+		const value = creds[field];
+		// Check if field exists and has valid type
+		if (field === 'expiry_date') {
+			return value === undefined || typeof value !== 'number' || isNaN(value);
+		}
+		return value === undefined || typeof value !== 'string';
+	});
+
+	if (missingFields.length > 0) {
+		throw new Error(`${sourceName} is missing required fields: ${missingFields.join(', ')}. ` +
+		               `OAuth2 credentials must include: ${requiredFields.join(', ')}`);
+	}
+
+	// Additional validation for string fields
+	for (const field of ['access_token', 'refresh_token', 'scope', 'token_type', 'id_token'] as const) {
+		const value = creds[field];
+		if (typeof value !== 'string' || value.trim() === '') {
+			throw new Error(`${sourceName}.${field} must be a non-empty string`);
+		}
+	}
+
+	// Additional validation for expiry_date
+	const expiryDate = creds.expiry_date;
+	if (typeof expiryDate !== 'number' || isNaN(expiryDate) || expiryDate <= 0) {
+		throw new Error(`${sourceName}.expiry_date must be a positive number`);
+	}
+
+	return {
+		access_token: creds.access_token as string,
+		refresh_token: creds.refresh_token as string,
+		scope: creds.scope as string,
+		token_type: creds.token_type as string,
+		id_token: creds.id_token as string,
+		expiry_date: creds.expiry_date as number
+	};
+}
+
 // Auth-related interfaces
 interface TokenRefreshResponse {
 	access_token: string;
@@ -48,6 +106,11 @@ interface CredentialRotationConfig {
 	maxRetriesPerCredential: number;
 }
 
+interface AuthResult {
+	index: number;
+	token: string;
+}
+
 /**
  * Handles OAuth2 authentication and Google Code Assist API communication.
  * Manages token caching, refresh, and API calls.
@@ -63,30 +126,47 @@ export class AuthManager {
 		strategy: "round-robin",
 		maxRetriesPerCredential: 3
 	};
+	// Synchronization lock for credential rotation
+	private rotationQueue: Promise<void> | null = null;
 
 	constructor(env: Env) {
 		this.env = env;
 	}
 
 	/**
-	 * Initializes authentication using OAuth2 credentials with KV storage caching.
+	 * Get credential-specific cache key to support credential rotation
 	 */
-	public async initializeAuth(): Promise<void> {
+	private getCredentialSpecificCacheKey(index: number = this.currentCredentialIndex): string {
+		if (this.rotationConfig.enabled && this.credentials.length > 1) {
+			return `${KV_TOKEN_KEY}_${index}`;
+		}
+		return KV_TOKEN_KEY;
+	}
+
+	/**
+	 * Initializes authentication using OAuth2 credentials with KV storage caching.
+	 * Returns the credential index and token used.
+	 */
+	public async initializeAuth(): Promise<AuthResult> {
 		// Initialize credential rotation configuration
 		await this.initializeCredentialRotation();
 
 		try {
-			// First, try to get a cached token from KV storage
+			// First, try to get a cached token from KV storage for the current index
+			let index = this.currentCredentialIndex;
 			let cachedTokenData = null;
 
 			try {
-				const cachedToken = await this.env.GEMINI_CLI_KV.get(KV_TOKEN_KEY, "json");
+				// Use credential-specific cache key
+				const cacheKey = this.getCredentialSpecificCacheKey(index);
+				const cachedToken = await this.env.GEMINI_CLI_KV.get(cacheKey, "json");
 				if (cachedToken) {
 					cachedTokenData = cachedToken as CachedTokenData;
-					console.log("Found cached token in KV storage");
+					console.log(`Found cached token in KV storage for credential ${index}`);
 				}
 			} catch (kvError) {
-				console.log("No cached token found in KV storage or KV error:", kvError);
+				console.error("KV storage error during token retrieval:", kvError);
+				// Continue with normal authentication flow
 			}
 
 			// Check if cached token is still valid (with buffer)
@@ -94,42 +174,73 @@ export class AuthManager {
 				const timeUntilExpiry = cachedTokenData.expiry_date - Date.now();
 				if (timeUntilExpiry > TOKEN_BUFFER_TIME) {
 					this.accessToken = cachedTokenData.access_token;
-					console.log(`Using cached token, valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`);
-					return;
+					console.log(`Using cached token for credential ${index}, valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`);
+					return { index, token: cachedTokenData.access_token };
 				}
-				console.log("Cached token expired or expiring soon");
+				console.log(`Cached token for credential ${index} expired or expiring soon`);
 			}
 
-			// Get current credentials based on rotation strategy
+			// Get current credentials based on rotation strategy (this may rotate if current is blocked)
+			const previousIndex = this.currentCredentialIndex;
 			const currentCreds = await this.getCurrentCredentials();
+			// Update index as it might have changed during getCurrentCredentials
+			index = this.currentCredentialIndex;
+
+			// If the index changed, check KV storage again for the new index
+			if (index !== previousIndex) {
+				try {
+					const cacheKey = this.getCredentialSpecificCacheKey(index);
+					const cachedToken = await this.env.GEMINI_CLI_KV.get(cacheKey, "json");
+					if (cachedToken) {
+						const cachedTokenData = cachedToken as CachedTokenData;
+						console.log(`Found cached token in KV storage for new credential ${index}`);
+
+						const timeUntilExpiry = cachedTokenData.expiry_date - Date.now();
+						if (timeUntilExpiry > TOKEN_BUFFER_TIME) {
+							this.accessToken = cachedTokenData.access_token;
+							console.log(`Using cached token for credential ${index}, valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`);
+							return { index, token: cachedTokenData.access_token };
+						}
+						console.log(`Cached token for credential ${index} expired or expiring soon`);
+					}
+				} catch (kvError) {
+					console.error("KV storage error during token retrieval for new credential:", kvError);
+				}
+			}
 
 			// Check if the current token is still valid
 			const timeUntilExpiry = currentCreds.expiry_date - Date.now();
 			if (timeUntilExpiry > TOKEN_BUFFER_TIME) {
 				// Current token is still valid, cache it and use it
 				this.accessToken = currentCreds.access_token;
-				console.log(`Current token is valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`);
+				console.log(`Current token for credential ${index} is valid for ${Math.floor(timeUntilExpiry / 1000)} more seconds`);
 
 				// Cache the token in KV storage
-				await this.cacheTokenInKV(currentCreds.access_token, currentCreds.expiry_date);
-				return;
+				await this.cacheTokenInKV(currentCreds.access_token, currentCreds.expiry_date, index);
+				return { index, token: currentCreds.access_token };
 			}
 
 			// Token is expired, refresh the token
-			console.log("Token expired, refreshing...");
-			await this.refreshAndCacheToken(currentCreds.refresh_token);
+			console.log(`Token for credential ${index} expired, refreshing...`);
+			const newToken = await this.refreshAndCacheToken(currentCreds.refresh_token, index);
+			return { index, token: newToken };
 		} catch (e: unknown) {
+			// Clear access token on failure to prevent using invalid token
+			this.accessToken = null;
+
 			const errorMessage = e instanceof Error ? e.message : String(e);
-			console.error("Failed to initialize authentication:", e);
-			throw new Error("Authentication failed: " + errorMessage);
+			console.error("Authentication initialization failed:", e);
+
+			// Throw a standardized error with context
+			throw new Error(`Authentication failed: ${errorMessage}. Please verify your credentials and configuration.`);
 		}
 	}
 
 	/**
 	 * Refresh the OAuth token and cache it in KV storage.
 	 */
-	private async refreshAndCacheToken(refreshToken: string): Promise<void> {
-		console.log("Refreshing OAuth token...");
+	private async refreshAndCacheToken(refreshToken: string, index: number): Promise<string> {
+		console.log(`Refreshing OAuth token for credential ${index}...`);
 
 		const refreshResponse = await fetch(OAUTH_REFRESH_URL, {
 			method: "POST",
@@ -160,13 +271,15 @@ export class AuthManager {
 		console.log(`New token expires in ${refreshData.expires_in} seconds`);
 
 		// Cache the new token in KV storage
-		await this.cacheTokenInKV(refreshData.access_token, expiryTime);
+		await this.cacheTokenInKV(refreshData.access_token, expiryTime, index);
+
+		return refreshData.access_token;
 	}
 
 	/**
 	 * Cache the access token in KV storage.
 	 */
-	private async cacheTokenInKV(accessToken: string, expiryDate: number): Promise<void> {
+	private async cacheTokenInKV(accessToken: string, expiryDate: number, index: number): Promise<void> {
 		try {
 			const tokenData = {
 				access_token: accessToken,
@@ -178,10 +291,12 @@ export class AuthManager {
 			const ttlSeconds = Math.floor((expiryDate - Date.now()) / 1000) - 300; // 5 minutes buffer
 
 			if (ttlSeconds > 0) {
-				await this.env.GEMINI_CLI_KV.put(KV_TOKEN_KEY, JSON.stringify(tokenData), {
+				// Use credential-specific cache key to support credential rotation
+				const cacheKey = this.getCredentialSpecificCacheKey(index);
+				await this.env.GEMINI_CLI_KV.put(cacheKey, JSON.stringify(tokenData), {
 					expirationTtl: ttlSeconds
 				});
-				console.log(`Token cached in KV storage with TTL of ${ttlSeconds} seconds`);
+				console.log(`Token cached in KV storage for credential ${index} with TTL of ${ttlSeconds} seconds`);
 			} else {
 				console.log("Token expires too soon, not caching in KV");
 			}
@@ -194,10 +309,12 @@ export class AuthManager {
 	/**
 	 * Clear cached token from KV storage.
 	 */
-	public async clearTokenCache(): Promise<void> {
+	public async clearTokenCache(index: number = this.currentCredentialIndex): Promise<void> {
 		try {
-			await this.env.GEMINI_CLI_KV.delete(KV_TOKEN_KEY);
-			console.log("Cleared cached token from KV storage");
+			// Clear the credential-specific cache key
+			const cacheKey = this.getCredentialSpecificCacheKey(index);
+			await this.env.GEMINI_CLI_KV.delete(cacheKey);
+			console.log(`Cleared cached token from KV storage for credential ${index}`);
 		} catch (kvError) {
 			console.log("Error clearing KV cache:", kvError);
 		}
@@ -208,7 +325,9 @@ export class AuthManager {
 	 */
 	public async getCachedTokenInfo(): Promise<TokenCacheInfo> {
 		try {
-			const cachedToken = await this.env.GEMINI_CLI_KV.get(KV_TOKEN_KEY, "json");
+			// Use credential-specific cache key for current index
+			const cacheKey = this.getCredentialSpecificCacheKey();
+			const cachedToken = await this.env.GEMINI_CLI_KV.get(cacheKey, "json");
 			if (cachedToken) {
 				const tokenData = cachedToken as CachedTokenData;
 				const timeUntilExpiry = tokenData.expiry_date - Date.now();
@@ -233,13 +352,13 @@ export class AuthManager {
 	 * A generic method to call a Code Assist API endpoint.
 	 */
 	public async callEndpoint(method: string, body: Record<string, unknown>, isRetry: boolean = false): Promise<unknown> {
-		await this.initializeAuth();
+		const { index: usedIndex, token } = await this.initializeAuth();
 
 		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:${method}`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
-				Authorization: `Bearer ${this.accessToken}`
+				Authorization: `Bearer ${token}`
 			},
 			body: JSON.stringify(body)
 		});
@@ -247,17 +366,18 @@ export class AuthManager {
 		if (!response.ok) {
 			if (response.status === 401 && !isRetry) {
 				console.log("Got 401 error, clearing token cache and retrying...");
-				this.accessToken = null; // Clear cached token
-				await this.clearTokenCache(); // Clear KV cache
-				await this.initializeAuth(); // This will refresh the token
+				this.accessToken = null; // Clear cached token in memory
+				await this.clearTokenCache(usedIndex); // Clear KV cache for used credential
+				// initializeAuth will be called again in recursion, getting fresh token
 				return this.callEndpoint(method, body, true); // Retry once
 			}
 
 			// Handle rate limiting and other errors with credential rotation
 			if ((response.status === 429 || response.status === 503) && this.rotationConfig.enabled && !isRetry) {
 				console.log(`Got ${response.status} error, rotating credentials...`);
-				await this.handleCredentialFailure(`HTTP ${response.status} error`);
-				await this.initializeAuth(); // This will switch to next credential
+				await this.handleCredentialFailure(`HTTP ${response.status} error`, usedIndex);
+				await this.clearTokenCache(usedIndex); // Clear the failed credential's cache
+				// initializeAuth will be called again in recursion, switching to next credential
 				return this.callEndpoint(method, body, true); // Retry once with new credential
 			}
 
@@ -266,7 +386,7 @@ export class AuthManager {
 		}
 
 		// Mark success for credential health tracking
-		await this.handleCredentialSuccess();
+		await this.handleCredentialSuccess(usedIndex);
 
 		return response.json();
 	}
@@ -286,6 +406,11 @@ export class AuthManager {
 		this.rotationConfig.enabled = this.env.ENABLE_CREDENTIAL_ROTATION === "true";
 
 		if (!this.rotationConfig.enabled) {
+			return;
+		}
+
+		// If credentials are already loaded, no need to re-initialize.
+		if (this.credentials.length > 0) {
 			return;
 		}
 
@@ -332,7 +457,7 @@ export class AuthManager {
 
 			try {
 				const cred = JSON.parse(credVar);
-				individualCreds.push(cred);
+				individualCreds.push(validateOAuth2Credentials(cred, `GCP_SERVICE_ACCOUNTS_${index}`));
 				index++;
 			} catch (e) {
 				console.error(`Failed to parse GCP_SERVICE_ACCOUNTS_${index}:`, e);
@@ -348,10 +473,12 @@ export class AuthManager {
 		if (this.env.GCP_SERVICE_ACCOUNTS && typeof this.env.GCP_SERVICE_ACCOUNTS === 'string') {
 			// Multiple credentials provided as JSON array
 			try {
-				this.credentials = JSON.parse(this.env.GCP_SERVICE_ACCOUNTS);
-				if (!Array.isArray(this.credentials)) {
+				const parsedCreds = JSON.parse(this.env.GCP_SERVICE_ACCOUNTS);
+				if (!Array.isArray(parsedCreds)) {
 					throw new Error("GCP_SERVICE_ACCOUNTS must be a JSON array");
 				}
+				// Validate each credential in the array
+				this.credentials = parsedCreds.map((cred, index) => validateOAuth2Credentials(cred, `GCP_SERVICE_ACCOUNTS[${index}]`));
 				return;
 			} catch (e) {
 				console.error("Failed to parse GCP_SERVICE_ACCOUNTS:", e);
@@ -363,7 +490,7 @@ export class AuthManager {
 			// Single credential provided (legacy support)
 			try {
 				const singleCred = JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
-				this.credentials = [singleCred];
+				this.credentials = [validateOAuth2Credentials(singleCred, "GCP_SERVICE_ACCOUNT")];
 				return;
 			} catch (e) {
 				console.error("Failed to parse GCP_SERVICE_ACCOUNT:", e);
@@ -378,6 +505,8 @@ export class AuthManager {
 	 * Initialize credential health tracking.
 	 */
 	private initializeCredentialHealth(): void {
+		// Clean up any existing credential health data to prevent memory leaks
+		// Ensure we only track health for credentials that actually exist
 		this.credentialHealth = this.credentials.map((_, index) => ({
 			credentialIndex: index,
 			successCount: 0,
@@ -387,74 +516,53 @@ export class AuthManager {
 			lastFailureReason: undefined,
 			isBlocked: false
 		}));
+
+		// Log initialization for debugging
+		console.log(`Initialized credential health tracking for ${this.credentials.length} credentials`);
 	}
 
 	/**
 	 * Get current credentials based on rotation strategy.
 	 */
 	private async getCurrentCredentials(): Promise<OAuth2Credentials> {
-		if (!this.rotationConfig.enabled || this.credentials.length === 0) {
-			// If rotation is disabled or no credentials, try to use GCP_SERVICE_ACCOUNT
-			if (this.env.GCP_SERVICE_ACCOUNT) {
-				try {
-					return JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
-				} catch (e) {
-					console.error("Failed to parse GCP_SERVICE_ACCOUNT:", e);
-					throw new Error("Invalid GCP_SERVICE_ACCOUNT format. Must be a JSON object with OAuth2 credentials.");
+		// If we have loaded credentials, use them regardless of rotation setting
+		if (this.credentials.length > 0) {
+			const maxAttempts = this.credentials.length;
+			for (let attempts = 0; attempts < maxAttempts; attempts++) {
+				const currentCred = this.credentials[this.currentCredentialIndex];
+				const currentHealth = this.credentialHealth[this.currentCredentialIndex];
+
+				// Update usage stats
+				currentHealth.lastUsed = Date.now();
+
+				// Check if credential is blocked
+				if (currentHealth.isBlocked) {
+					console.log(`Credential ${this.currentCredentialIndex} is blocked, switching to next credential`);
+					await this.rotateToNextCredential();
+					continue; // Try next credential
 				}
+
+				// Found a valid credential
+				return currentCred;
 			}
 
-			// No credentials available - this is a critical error
-			throw new Error("No OAuth2 credentials available. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables.");
+			// If we've tried all credentials and they're all blocked, throw an error
+			throw new Error("All credentials are blocked. No available credentials to use.");
 		}
 
-		// Get current credential
-		const currentCred = this.credentials[this.currentCredentialIndex];
-		const currentHealth = this.credentialHealth[this.currentCredentialIndex];
-
-		// Update usage stats
-		currentHealth.lastUsed = Date.now();
-
-		// Check if credential is blocked
-		if (currentHealth.isBlocked) {
-			console.log(`Credential ${this.currentCredentialIndex} is blocked, switching to next credential`);
-			await this.rotateToNextCredential();
-			return this.getCurrentCredentialsIterative();
-		}
-
-		return currentCred;
-	}
-
-	/**
-	 * Get current credentials using iterative approach to avoid stack overflow.
-	 */
-	private async getCurrentCredentialsIterative(): Promise<OAuth2Credentials> {
-		let attempts = 0;
-		const maxAttempts = this.credentials.length;
-
-		while (attempts < maxAttempts) {
-			attempts++;
-
-			// Get current credential
-			const currentCred = this.credentials[this.currentCredentialIndex];
-			const currentHealth = this.credentialHealth[this.currentCredentialIndex];
-
-			// Update usage stats
-			currentHealth.lastUsed = Date.now();
-
-			// Check if credential is blocked
-			if (currentHealth.isBlocked) {
-				console.log(`Credential ${this.currentCredentialIndex} is blocked, switching to next credential`);
-				await this.rotateToNextCredential();
-				continue; // Try next credential
+		// If no credentials are loaded, try to use GCP_SERVICE_ACCOUNT (legacy support)
+		if (this.env.GCP_SERVICE_ACCOUNT) {
+			try {
+				const parsedCred = JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
+				return validateOAuth2Credentials(parsedCred, "GCP_SERVICE_ACCOUNT");
+			} catch (e) {
+				console.error("Failed to parse GCP_SERVICE_ACCOUNT:", e);
+				throw new Error("Invalid GCP_SERVICE_ACCOUNT format. Must be a JSON object with OAuth2 credentials.");
 			}
-
-			// Found a valid credential
-			return currentCred;
 		}
 
-		// If we've tried all credentials and they're all blocked, throw an error
-		throw new Error("All credentials are blocked. No available credentials to use.");
+		// No credentials available - this is a critical error
+		throw new Error("No OAuth2 credentials available. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables.");
 	}
 
 	/**
@@ -465,43 +573,86 @@ export class AuthManager {
 			return; // No rotation needed with single credential
 		}
 
-		// Update current credential index
-		if (this.rotationConfig.strategy === "round-robin") {
-			// Simple round-robin rotation
-			this.currentCredentialIndex = (this.currentCredentialIndex + 1) % this.credentials.length;
-		} else {
-			// Rate-limit based rotation - find the healthiest credential
-			const healthyCredentials = this.credentialHealth
-				.filter(health => !health.isBlocked)
-				.sort((a, b) => {
-					// Sort by failure count (ascending) and last used (ascending)
-					return a.failureCount - b.failureCount || a.lastUsed - b.lastUsed;
-				});
+		// Create a new lock mechanism
+		let releaseLock: () => void = () => {};
+		const newLock = new Promise<void>((resolve) => {
+			releaseLock = resolve;
+		});
 
-			if (healthyCredentials.length > 0) {
-				this.currentCredentialIndex = healthyCredentials[0].credentialIndex;
-			} else {
-				// All credentials are blocked, reset all and start from beginning
-				this.credentialHealth.forEach(health => {
-					health.isBlocked = false;
-					health.failureCount = 0;
-				});
-				this.currentCredentialIndex = 0;
-			}
+		// If someone is holding the lock, wait for them
+		const previousLock = this.rotationQueue;
+
+		// We become the new tail of the queue immediately
+		this.rotationQueue = newLock;
+
+		if (previousLock) {
+			// If there's already a rotation in progress, wait for it to complete
+			await previousLock;
 		}
 
-		console.log(`Rotated to credential ${this.currentCredentialIndex}`);
+		try {
+			// Update current credential index
+			if (this.rotationConfig.strategy === "round-robin") {
+				// Simple round-robin rotation
+				this.currentCredentialIndex = (this.currentCredentialIndex + 1) % this.credentials.length;
+			} else {
+				// Rate-limit based rotation - find the healthiest credential
+				const healthyCredentials = this.credentialHealth
+					.filter(health => !health.isBlocked)
+					.sort((a, b) => {
+						// Sort by failure count (ascending) and last used (ascending)
+						return a.failureCount - b.failureCount || a.lastUsed - b.lastUsed;
+					});
+
+				if (healthyCredentials.length > 0) {
+					this.currentCredentialIndex = healthyCredentials[0].credentialIndex;
+				} else {
+					// All credentials are blocked, reset all and start from beginning
+					console.log("All credentials blocked, performing reset...");
+					this.credentialHealth.forEach(health => {
+						health.isBlocked = false;
+						health.failureCount = 0;
+						health.lastFailure = undefined;
+						health.lastFailureReason = undefined;
+					});
+					this.currentCredentialIndex = 0;
+
+					// Verify the reset was successful and credential is not blocked
+					if (this.credentialHealth[0] && this.credentialHealth[0].isBlocked) {
+						throw new Error("Credential reset failed - first credential is still blocked after reset");
+					}
+
+					// Additional verification: ensure we have at least one valid credential
+					if (this.credentials.length === 0) {
+						throw new Error("Credential reset failed - no credentials available");
+					}
+
+					// Log successful reset
+					console.log("Credential reset successful, starting with credential 0");
+				}
+			}
+
+			console.log(`Rotated to credential ${this.currentCredentialIndex}`);
+		} finally {
+			// Release the lock
+			releaseLock();
+
+			// If we are still the tail of the queue, clear it
+			if (this.rotationQueue === newLock) {
+				this.rotationQueue = null;
+			}
+		}
 	}
 
 	/**
 	 * Mark current credential as failed and rotate if needed.
 	 */
-	private async handleCredentialFailure(error: unknown): Promise<void> {
+	private async handleCredentialFailure(error: unknown, index: number): Promise<void> {
 		if (!this.rotationConfig.enabled || this.credentials.length <= 1) {
 			return;
 		}
 
-		const currentHealth = this.credentialHealth[this.currentCredentialIndex];
+		const currentHealth = this.credentialHealth[index];
 		currentHealth.failureCount++;
 		currentHealth.lastFailure = Date.now();
 		currentHealth.lastFailureReason = error instanceof Error ? error.message : String(error);
@@ -509,22 +660,24 @@ export class AuthManager {
 		// Check if we should block this credential
 		if (currentHealth.failureCount >= this.rotationConfig.maxRetriesPerCredential) {
 			currentHealth.isBlocked = true;
-			console.log(`Credential ${this.currentCredentialIndex} blocked due to repeated failures`);
+			console.log(`Credential ${index} blocked due to repeated failures`);
 		}
 
-		// Rotate to next credential
-		await this.rotateToNextCredential();
+		// Only rotate if we are currently using the failed credential
+		if (this.currentCredentialIndex === index) {
+			await this.rotateToNextCredential();
+		}
 	}
 
 	/**
 	 * Mark current credential as successful.
 	 */
-	private async handleCredentialSuccess(): Promise<void> {
+	private async handleCredentialSuccess(index: number): Promise<void> {
 		if (!this.rotationConfig.enabled) {
 			return;
 		}
 
-		const currentHealth = this.credentialHealth[this.currentCredentialIndex];
+		const currentHealth = this.credentialHealth[index];
 		currentHealth.successCount++;
 		currentHealth.failureCount = 0; // Reset failure count on success
 		currentHealth.lastFailure = undefined;

@@ -358,7 +358,7 @@ export class GeminiApiClient {
 			};
 		} & NativeToolsRequestParams
 	): AsyncGenerator<StreamChunk> {
-		await this.authManager.initializeAuth();
+		const { index: credentialIndex, token } = await this.authManager.initializeAuth();
 		const projectId = await this.discoverProjectId();
 
 		const contents = messages.map((msg) => this.messageToGeminiFormat(msg));
@@ -442,6 +442,8 @@ export class GeminiApiClient {
 
 		yield* this.performStreamRequest(
 			streamRequest,
+			token,
+			credentialIndex,
 			needsThinkingClose,
 			false,
 			includeReasoning && streamThinkingAsContent,
@@ -550,6 +552,8 @@ export class GeminiApiClient {
 	 */
 	private async *performStreamRequest(
 		streamRequest: unknown,
+		token: string,
+		credentialIndex: number,
 		needsThinkingClose: boolean = false,
 		isRetry: boolean = false,
 		realThinkingAsContent: boolean = false,
@@ -561,7 +565,7 @@ export class GeminiApiClient {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
-				Authorization: `Bearer ${this.authManager.getAccessToken()}`
+				Authorization: `Bearer ${token}`
 			},
 			body: JSON.stringify(streamRequest)
 		});
@@ -569,10 +573,12 @@ export class GeminiApiClient {
 		if (!response.ok) {
 			if (response.status === 401 && !isRetry) {
 				console.log("Got 401 error in stream request, clearing token cache and retrying...");
-				await this.authManager.clearTokenCache();
-				await this.authManager.initializeAuth();
+				await this.authManager.clearTokenCache(credentialIndex);
+				const { index: newIndex, token: newToken } = await this.authManager.initializeAuth();
 				yield* this.performStreamRequest(
 					streamRequest,
+					newToken,
+					newIndex,
 					needsThinkingClose,
 					true,
 					realThinkingAsContent,
@@ -604,6 +610,8 @@ export class GeminiApiClient {
 
 					yield* this.performStreamRequest(
 						fallbackRequest,
+						token,
+						credentialIndex,
 						needsThinkingClose,
 						true,
 						realThinkingAsContent,

@@ -1,4 +1,4 @@
-import { NativeToolResponse } from "./types/native-tools";
+import { NativeToolResponse, Tool } from "./types/native-tools";
 
 // --- Safety Threshold Types ---
 export type SafetyThreshold =
@@ -40,6 +40,9 @@ export interface Env {
 	ENABLE_INLINE_CITATIONS?: string; // Enable inline citations in responses (default: false)
 	INCLUDE_GROUNDING_METADATA?: string; // Include grounding metadata in responses (default: true)
 	INCLUDE_SEARCH_ENTRY_POINT?: string; // Include search entry point HTML (default: false)
+
+	// Index signature to allow dynamic property access for individual service accounts
+	[key: `GCP_SERVICE_ACCOUNTS_${number}`]: string | undefined;
 }
 
 // --- OAuth2 Credentials Interface ---
@@ -70,14 +73,8 @@ export interface ModelInfo {
 // --- Chat Completion Request Interface ---
 export type EffortLevel = "none" | "low" | "medium" | "high";
 
-export interface Tool {
-	type: "function";
-	function: {
-		name: string;
-		description?: string;
-		parameters?: Record<string, unknown>;
-	};
-}
+// Tool interface is now exported from ./types/native-tools to avoid circular dependency
+export type { Tool } from "./types/native-tools";
 
 export type ToolChoice = "none" | "auto" | { type: "function"; function: { name: string } };
 
