@@ -1,4 +1,4 @@
-import { NativeToolResponse } from "./types/native-tools";
+import { NativeToolResponse, Tool } from "./types/native-tools";
 
 // --- Safety Threshold Types ---
 export type SafetyThreshold =
@@ -11,7 +11,8 @@ export type SafetyThreshold =
 
 // --- Environment Variable Typings ---
 export interface Env {
-	GCP_SERVICE_ACCOUNT: string; // Now contains OAuth2 credentials JSON
+	GCP_SERVICE_ACCOUNT?: string; // Legacy single OAuth2 credentials JSON
+	GCP_SERVICE_ACCOUNTS?: string; // Multiple OAuth2 credentials JSON array for rotation
 	GEMINI_PROJECT_ID?: string;
 	GEMINI_CLI_KV: KVNamespace; // Cloudflare KV for token caching
 	OPENAI_API_KEY?: string; // Optional API key for authentication
@@ -19,6 +20,9 @@ export interface Env {
 	ENABLE_REAL_THINKING?: string; // Optional flag to enable real Gemini thinking output (set to "true" to enable)
 	STREAM_THINKING_AS_CONTENT?: string; // Optional flag to stream thinking as content with <thinking> tags (set to "true" to enable)
 	ENABLE_AUTO_MODEL_SWITCHING?: string; // Optional flag to enable automatic fallback from pro to flash on 429 errors (set to "true" to enable)
+	ENABLE_CREDENTIAL_ROTATION?: string; // Optional flag to enable credential rotation (set to "true" to enable)
+	CREDENTIAL_ROTATION_STRATEGY?: "round-robin" | "rate-limit"; // Credential rotation strategy
+	MAX_RETRIES_PER_CREDENTIAL?: string; // Maximum retries per credential before switching
 	GEMINI_MODERATION_HARASSMENT_THRESHOLD?: SafetyThreshold;
 	GEMINI_MODERATION_HATE_SPEECH_THRESHOLD?: SafetyThreshold;
 	GEMINI_MODERATION_SEXUALLY_EXPLICIT_THRESHOLD?: SafetyThreshold;
@@ -36,6 +40,9 @@ export interface Env {
 	ENABLE_INLINE_CITATIONS?: string; // Enable inline citations in responses (default: false)
 	INCLUDE_GROUNDING_METADATA?: string; // Include grounding metadata in responses (default: true)
 	INCLUDE_SEARCH_ENTRY_POINT?: string; // Include search entry point HTML (default: false)
+
+	// Index signature to allow dynamic property access for individual service accounts
+	[key: `GCP_SERVICE_ACCOUNTS_${number}`]: string | undefined;
 }
 
 // --- OAuth2 Credentials Interface ---
@@ -66,14 +73,8 @@ export interface ModelInfo {
 // --- Chat Completion Request Interface ---
 export type EffortLevel = "none" | "low" | "medium" | "high";
 
-export interface Tool {
-	type: "function";
-	function: {
-		name: string;
-		description?: string;
-		parameters?: Record<string, unknown>;
-	};
-}
+// Tool interface is now exported from ./types/native-tools to avoid circular dependency
+export type { Tool } from "./types/native-tools";
 
 export type ToolChoice = "none" | "auto" | { type: "function"; function: { name: string } };
 

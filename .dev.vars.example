@@ -59,6 +59,30 @@ ENABLE_AUTO_MODEL_SWITCHING=true
 # If true, allows request-level parameters to override environment settings for native tools.
 # ALLOW_REQUEST_TOOL_CONTROL=true
 
+# --- Credential Rotation Configuration ---
+
+# Optional: Enable credential rotation to bypass rate limits (default: false)
+# When enabled, the system will rotate between multiple OAuth2 credentials to avoid hitting rate limits
+# ENABLE_CREDENTIAL_ROTATION=true
+
+# Optional: Credential rotation strategy (default: round-robin)
+# "round-robin" - Cycle through credentials sequentially
+# "rate-limit" - Switch to healthiest credential when rate limits are hit
+# CREDENTIAL_ROTATION_STRATEGY=rate-limit
+
+# Optional: Maximum retries per credential before switching (default: 3)
+# MAX_RETRIES_PER_CREDENTIAL=3
+
+# Optional: Multiple OAuth2 credentials for rotation (individual variables)
+# When credential rotation is enabled, provide multiple credentials as separate variables
+# This avoids Cloudflare's environment variable size limitations
+# GCP_SERVICE_ACCOUNTS_1={"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","id_token":"eyJ...","expiry_date":1750927763467}
+# GCP_SERVICE_ACCOUNTS_2={"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","id_token":"eyJ...","expiry_date":1750927763467}
+# GCP_SERVICE_ACCOUNTS_3={"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","id_token":"eyJ...","expiry_date":1750927763467}
+
+# Alternative: Multiple OAuth2 credentials as JSON array (for smaller setups)
+# GCP_SERVICE_ACCOUNTS=[{"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","id_token":"eyJ...","expiry_date":1750927763467},{"access_token":"ya29...","refresh_token":"1//...","scope":"...","token_type":"Bearer","id_token":"eyJ...","expiry_date":1750927763467}]
+
 # --- Citations and Grounding Configuration ---
 
 # Optional: Enable inline citations in responses (default: false)

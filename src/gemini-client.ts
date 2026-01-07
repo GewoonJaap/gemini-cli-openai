@@ -358,7 +358,7 @@ export class GeminiApiClient {
 			};
 		} & NativeToolsRequestParams
 	): AsyncGenerator<StreamChunk> {
-		await this.authManager.initializeAuth();
+		const { index: credentialIndex, token } = await this.authManager.initializeAuth();
 		const projectId = await this.discoverProjectId();
 
 		const contents = messages.map((msg) => this.messageToGeminiFormat(msg));
@@ -442,6 +442,8 @@ export class GeminiApiClient {
 
 		yield* this.performStreamRequest(
 			streamRequest,
+			token,
+			credentialIndex,
 			needsThinkingClose,
 			false,
 			includeReasoning && streamThinkingAsContent,
@@ -550,6 +552,8 @@ export class GeminiApiClient {
 	 */
 	private async *performStreamRequest(
 		streamRequest: unknown,
+		token: string,
+		credentialIndex: number,
 		needsThinkingClose: boolean = false,
 		isRetry: boolean = false,
 		realThinkingAsContent: boolean = false,
@@ -561,7 +565,7 @@ export class GeminiApiClient {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
-				Authorization: `Bearer ${this.authManager.getAccessToken()}`
+				Authorization: `Bearer ${token}`
 			},
 			body: JSON.stringify(streamRequest)
 		});
@@ -569,10 +573,12 @@ export class GeminiApiClient {
 		if (!response.ok) {
 			if (response.status === 401 && !isRetry) {
 				console.log("Got 401 error in stream request, clearing token cache and retrying...");
-				await this.authManager.clearTokenCache();
-				await this.authManager.initializeAuth();
+				await this.authManager.clearTokenCache(credentialIndex);
+				const { index: newIndex, token: newToken } = await this.authManager.initializeAuth();
 				yield* this.performStreamRequest(
 					streamRequest,
+					newToken,
+					newIndex,
 					needsThinkingClose,
 					true,
 					realThinkingAsContent,
@@ -582,8 +588,40 @@ export class GeminiApiClient {
 				return;
 			}
 
+			// Handle credential rotation for rate limits (429/503)
+			if ((response.status === 429 || response.status === 503) && !isRetry) {
+				const rotationEnabled = this.env.ENABLE_CREDENTIAL_ROTATION === "true";
+				if (rotationEnabled) {
+					console.log(`Got ${response.status} error, attempting credential rotation...`);
+					await this.authManager.handleCredentialFailure(`HTTP ${response.status} error`, credentialIndex);
+					await this.authManager.clearTokenCache(credentialIndex);
+
+					const { index: newIndex, token: newToken } = await this.authManager.initializeAuth();
+
+					// If we successfully rotated to a different credential, retry with it
+					if (newIndex !== credentialIndex) {
+						console.log("Credential rotated, retrying request...");
+						yield* this.performStreamRequest(
+							streamRequest,
+							newToken,
+							newIndex,
+							needsThinkingClose,
+							true,
+							realThinkingAsContent,
+							originalModel,
+							nativeToolsManager
+						);
+						return;
+					}
+					console.log(
+						"Credential did not rotate (maybe only one credential or all blocked), proceeding to model switching..."
+					);
+				}
+			}
+
 			// Handle rate limiting with auto model switching
-			if (this.autoSwitchHelper.isRateLimitStatus(response.status) && !isRetry && originalModel) {
+			const currentModel = (streamRequest as { model: string }).model;
+			if (this.autoSwitchHelper.isRateLimitStatus(response.status) && originalModel && currentModel === originalModel) {
 				const fallbackModel = this.autoSwitchHelper.getFallbackModel(originalModel);
 				if (fallbackModel && this.autoSwitchHelper.isEnabled()) {
 					console.log(
@@ -604,6 +642,8 @@ export class GeminiApiClient {
 
 					yield* this.performStreamRequest(
 						fallbackRequest,
+						token,
+						credentialIndex,
 						needsThinkingClose,
 						true,
 						realThinkingAsContent,
@@ -622,6 +662,9 @@ export class GeminiApiClient {
 		if (!response.body) {
 			throw new Error("Response has no body");
 		}
+
+		// Mark success for credential health tracking
+		await this.authManager.handleCredentialSuccess(credentialIndex);
 
 		let hasClosedThinking = false;
 		let hasStartedThinking = false;

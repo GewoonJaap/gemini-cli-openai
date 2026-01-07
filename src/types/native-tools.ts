@@ -1,6 +1,14 @@
 // Native Tools Type Definitions for Gemini API Integration
 
-import { Tool } from "../types";
+// Tool interface (moved here to avoid circular dependency)
+export interface Tool {
+	type: "function";
+	function: {
+		name: string;
+		description?: string;
+		parameters?: Record<string, unknown>;
+	};
+}
 
 // Google Search Grounding Types
 export interface GroundingMetadata {

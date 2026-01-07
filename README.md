@@ -158,7 +158,9 @@ npm run dev
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GCP_SERVICE_ACCOUNT` | ✅ | OAuth2 credentials JSON string. |
+| `GCP_SERVICE_ACCOUNT` | ❌ | OAuth2 credentials JSON string (legacy). |
+| `GCP_SERVICE_ACCOUNTS` | ❌ | Multiple OAuth2 credentials JSON array for rotation. |
+| `GCP_SERVICE_ACCOUNTS_1`, `GCP_SERVICE_ACCOUNTS_2`, etc. | ❌ | Individual OAuth2 credentials for rotation (avoids Cloudflare size limits). |
 | `GEMINI_PROJECT_ID` | ❌ | Google Cloud Project ID (auto-discovered if not set). |
 | `OPENAI_API_KEY` | ❌ | API key for authentication. If not set, the API is public. |
 
