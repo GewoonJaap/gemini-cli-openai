@@ -647,7 +647,7 @@ export class AuthManager {
 	/**
 	 * Mark current credential as failed and rotate if needed.
 	 */
-	private async handleCredentialFailure(error: unknown, index: number): Promise<void> {
+	public async handleCredentialFailure(error: unknown, index: number): Promise<void> {
 		if (!this.rotationConfig.enabled || this.credentials.length <= 1) {
 			return;
 		}
@@ -672,7 +672,7 @@ export class AuthManager {
 	/**
 	 * Mark current credential as successful.
 	 */
-	private async handleCredentialSuccess(index: number): Promise<void> {
+	public async handleCredentialSuccess(index: number): Promise<void> {
 		if (!this.rotationConfig.enabled) {
 			return;
 		}
