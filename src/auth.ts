@@ -40,10 +40,6 @@ function validateOAuth2Credentials(credentials: any, sourceName: string): OAuth2
 		               `OAuth2 credentials must include: ${requiredFields.join(', ')}`);
 	}
 
-	// Check expiry_date is a valid timestamp
-	if (typeof credentials.expiry_date !== 'number' || isNaN(credentials.expiry_date)) {
-		throw new Error(`${sourceName} has invalid expiry_date. Must be a valid number.`);
-	}
 
 	return credentials as OAuth2Credentials;
 }
@@ -328,6 +324,11 @@ export class AuthManager {
 			return;
 		}
 
+		// If credentials are already loaded, no need to re-initialize.
+		if (this.credentials.length > 0) {
+			return;
+		}
+
 		// Set rotation strategy (default to round-robin)
 		this.rotationConfig.strategy = this.env.CREDENTIAL_ROTATION_STRATEGY === "rate-limit"
 			? "rate-limit"
@@ -450,34 +451,8 @@ export class AuthManager {
 			throw new Error("No OAuth2 credentials available. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables.");
 		}
 
-		// Get current credential
-		const currentCred = this.credentials[this.currentCredentialIndex];
-		const currentHealth = this.credentialHealth[this.currentCredentialIndex];
-
-		// Update usage stats
-		currentHealth.lastUsed = Date.now();
-
-		// Check if credential is blocked
-		if (currentHealth.isBlocked) {
-			console.log(`Credential ${this.currentCredentialIndex} is blocked, switching to next credential`);
-			await this.rotateToNextCredential();
-			return this.getCurrentCredentialsIterative();
-		}
-
-		return currentCred;
-	}
-
-	/**
-	 * Get current credentials using iterative approach to avoid stack overflow.
-	 */
-	private async getCurrentCredentialsIterative(): Promise<OAuth2Credentials> {
-		let attempts = 0;
 		const maxAttempts = this.credentials.length;
-
-		while (attempts < maxAttempts) {
-			attempts++;
-
-			// Get current credential
+		for (let attempts = 0; attempts < maxAttempts; attempts++) {
 			const currentCred = this.credentials[this.currentCredentialIndex];
 			const currentHealth = this.credentialHealth[this.currentCredentialIndex];
 
