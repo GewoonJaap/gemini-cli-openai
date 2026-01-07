@@ -618,7 +618,12 @@ export class GeminiApiClient {
 			}
 
 			// Handle rate limiting with auto model switching
-			if (this.autoSwitchHelper.isRateLimitStatus(response.status) && !isRetry && originalModel) {
+			const currentModel = (streamRequest as { model: string }).model;
+			if (
+				this.autoSwitchHelper.isRateLimitStatus(response.status) &&
+				originalModel &&
+				currentModel === originalModel
+			) {
 				const fallbackModel = this.autoSwitchHelper.getFallbackModel(originalModel);
 				if (fallbackModel && this.autoSwitchHelper.isEnabled()) {
 					console.log(
