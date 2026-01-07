@@ -15,33 +15,22 @@ import {
  * @param sourceName Name of the source for error reporting
  * @throws Error if validation fails
  */
-<<<<<<< HEAD
 function validateOAuth2Credentials(credentials: unknown, sourceName: string): OAuth2Credentials {
-=======
-function validateOAuth2Credentials(credentials: any, sourceName: string): OAuth2Credentials {
->>>>>>> a07c3dff01c7ce8e4aadef8aac4d25999af8b6bd
 	// Check if it's an object
 	if (typeof credentials !== 'object' || credentials === null) {
 		throw new Error(`${sourceName} must be a JSON object with OAuth2 credentials.`);
 	}
 
-<<<<<<< HEAD
 	// Type guard to ensure credentials is an object with the right structure
 	const creds = credentials as Record<string, unknown>;
 
-=======
->>>>>>> a07c3dff01c7ce8e4aadef8aac4d25999af8b6bd
 	// Check required fields
 	const requiredFields: (keyof OAuth2Credentials)[] = [
 		'access_token', 'refresh_token', 'scope', 'token_type', 'id_token', 'expiry_date'
 	];
 
 	const missingFields = requiredFields.filter(field => {
-<<<<<<< HEAD
 		const value = creds[field];
-=======
-		const value = credentials[field];
->>>>>>> a07c3dff01c7ce8e4aadef8aac4d25999af8b6bd
 		// Check if field exists and has valid type
 		if (field === 'expiry_date') {
 			return value === undefined || typeof value !== 'number' || isNaN(value);
@@ -54,7 +43,6 @@ function validateOAuth2Credentials(credentials: any, sourceName: string): OAuth2
 		               `OAuth2 credentials must include: ${requiredFields.join(', ')}`);
 	}
 
-<<<<<<< HEAD
 	// Additional validation for string fields
 	for (const field of ['access_token', 'refresh_token', 'scope', 'token_type', 'id_token'] as const) {
 		const value = creds[field];
@@ -77,10 +65,6 @@ function validateOAuth2Credentials(credentials: any, sourceName: string): OAuth2
 		id_token: creds.id_token as string,
 		expiry_date: creds.expiry_date as number
 	};
-=======
-
-	return credentials as OAuth2Credentials;
->>>>>>> a07c3dff01c7ce8e4aadef8aac4d25999af8b6bd
 }
 
 // Auth-related interfaces
@@ -541,7 +525,6 @@ export class AuthManager {
 	 * Get current credentials based on rotation strategy.
 	 */
 	private async getCurrentCredentials(): Promise<OAuth2Credentials> {
-<<<<<<< HEAD
 		// If we have loaded credentials, use them regardless of rotation setting
 		if (this.credentials.length > 0) {
 			const maxAttempts = this.credentials.length;
@@ -580,45 +563,6 @@ export class AuthManager {
 
 		// No credentials available - this is a critical error
 		throw new Error("No OAuth2 credentials available. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables.");
-=======
-		if (!this.rotationConfig.enabled || this.credentials.length === 0) {
-			// If rotation is disabled or no credentials, try to use GCP_SERVICE_ACCOUNT
-			if (this.env.GCP_SERVICE_ACCOUNT) {
-				try {
-					const parsedCred = JSON.parse(this.env.GCP_SERVICE_ACCOUNT);
-					return validateOAuth2Credentials(parsedCred, "GCP_SERVICE_ACCOUNT");
-				} catch (e) {
-					console.error("Failed to parse GCP_SERVICE_ACCOUNT:", e);
-					throw new Error("Invalid GCP_SERVICE_ACCOUNT format. Must be a JSON object with OAuth2 credentials.");
-				}
-			}
-
-			// No credentials available - this is a critical error
-			throw new Error("No OAuth2 credentials available. Please set GCP_SERVICE_ACCOUNT, GCP_SERVICE_ACCOUNTS, or GCP_SERVICE_ACCOUNTS_1, GCP_SERVICE_ACCOUNTS_2, etc. environment variables.");
-		}
-
-		const maxAttempts = this.credentials.length;
-		for (let attempts = 0; attempts < maxAttempts; attempts++) {
-			const currentCred = this.credentials[this.currentCredentialIndex];
-			const currentHealth = this.credentialHealth[this.currentCredentialIndex];
-
-			// Update usage stats
-			currentHealth.lastUsed = Date.now();
-
-			// Check if credential is blocked
-			if (currentHealth.isBlocked) {
-				console.log(`Credential ${this.currentCredentialIndex} is blocked, switching to next credential`);
-				await this.rotateToNextCredential();
-				continue; // Try next credential
-			}
-
-			// Found a valid credential
-			return currentCred;
-		}
-
-		// If we've tried all credentials and they're all blocked, throw an error
-		throw new Error("All credentials are blocked. No available credentials to use.");
->>>>>>> a07c3dff01c7ce8e4aadef8aac4d25999af8b6bd
 	}
 
 	/**
