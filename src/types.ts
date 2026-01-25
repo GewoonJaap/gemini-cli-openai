@@ -125,6 +125,8 @@ export interface ToolCall {
 		name: string;
 		arguments: string;
 	};
+	// Required for Gemini 3 models with thinking enabled
+	thought_signature?: string;
 }
 
 export interface ChatMessage {
@@ -195,6 +197,7 @@ export interface ChatCompletionUsage {
 export interface GeminiFunctionCall {
 	name: string;
 	args: object;
+	thought_signature?: string; // Required for Gemini 3 models with thinking enabled
 }
 
 // --- Usage and Reasoning Data Types ---

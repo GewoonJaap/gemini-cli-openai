@@ -48,6 +48,19 @@ export class GenerationConfigValidator {
 	}
 
 	/**
+	 * Creates a thinkingConfig object for Gemini models.
+	 * @param budget - The thinking budget (0 = disabled, -1 = dynamic, positive = token limit)
+	 * @param includeThoughts - Whether to include thinking content in the response
+	 * @returns ThinkingConfig object
+	 */
+	private static createThinkingConfig(
+		budget: number,
+		includeThoughts: boolean = false
+	): { thinkingBudget: number; includeThoughts: boolean } {
+		return { thinkingBudget: budget, includeThoughts };
+	}
+
+	/**
 	 * Recursively cleans a schema object to remove fields not supported by Gemini
 	 * (like keys starting with $, strict, const, etc.)
 	 * @param schema - The schema to clean
@@ -157,7 +170,8 @@ export class GenerationConfigValidator {
 		modelId: string,
 		options: Partial<ChatCompletionRequest> = {},
 		isRealThinkingEnabled: boolean,
-		includeReasoning: boolean
+		includeReasoning: boolean,
+		hasTools: boolean = false
 	): Record<string, unknown> {
 		const generationConfig: Record<string, unknown> = {
 			temperature: options.temperature ?? DEFAULT_TEMPERATURE,
@@ -175,40 +189,50 @@ export class GenerationConfigValidator {
 
 		const modelInfo = geminiCliModels[modelId];
 		const isThinkingModel = modelInfo?.thinking || false;
+		const isGemini3Model = modelId.includes("gemini-3");
 
-		if (isThinkingModel) {
+		// Gemini 3 models - use thinkingBudget (works in AI Studio)
+		if (isGemini3Model) {
+			const reasoning_effort =
+				options.reasoning_effort || options.extra_body?.reasoning_effort || options.model_params?.reasoning_effort;
+
+			if (this.isValidEffortLevel(reasoning_effort)) {
+				const budget = this.mapEffortToThinkingBudget(reasoning_effort, modelId);
+				generationConfig.thinkingConfig = this.createThinkingConfig(budget);
+				if (reasoning_effort === "none") {
+					console.log(`[GenerationConfig] Gemini 3 thinking disabled for '${modelId}' with budget: 0`);
+				}
+			}
+			// If no reasoning_effort specified, don't include thinkingConfig (use default)
+
+			Object.keys(generationConfig).forEach((key) => generationConfig[key] === undefined && delete generationConfig[key]);
+			return generationConfig;
+		}
+		// Gemini 2.5 models use thinkingBudget
+		else if (isThinkingModel) {
 			let thinkingBudget = options.thinking_budget ?? DEFAULT_THINKING_BUDGET;
 
 			// Handle reasoning effort mapping to thinking budget
 			const reasoning_effort =
 				options.reasoning_effort || options.extra_body?.reasoning_effort || options.model_params?.reasoning_effort;
 
-			if (reasoning_effort && this.isValidEffortLevel(reasoning_effort)) {
+			if (this.isValidEffortLevel(reasoning_effort)) {
 				thinkingBudget = this.mapEffortToThinkingBudget(reasoning_effort, modelId);
-				// If effort is "none", disable reasoning
-				if (reasoning_effort === "none") {
-					includeReasoning = false;
-				} else {
-					includeReasoning = true;
-				}
+				includeReasoning = reasoning_effort !== "none";
 			}
 
 			const validatedBudget = this.validateThinkingBudget(modelId, thinkingBudget);
 
 			if (isRealThinkingEnabled && includeReasoning) {
 				// Enable thinking with validated budget
-				generationConfig.thinkingConfig = {
-					thinkingBudget: validatedBudget,
-					includeThoughts: true // Critical: This enables thinking content in response
-				};
+				generationConfig.thinkingConfig = this.createThinkingConfig(validatedBudget, true);
 				console.log(`[GenerationConfig] Real thinking enabled for '${modelId}' with budget: ${validatedBudget}`);
 			} else {
 				// For thinking models, always use validated budget (can't use 0)
 				// Control thinking visibility with includeThoughts instead
-				generationConfig.thinkingConfig = {
-					thinkingBudget: this.validateThinkingBudget(modelId, DEFAULT_THINKING_BUDGET),
-					includeThoughts: false // Disable thinking visibility in response
-				};
+				generationConfig.thinkingConfig = this.createThinkingConfig(
+					this.validateThinkingBudget(modelId, DEFAULT_THINKING_BUDGET)
+				);
 			}
 		}
 

@@ -18,6 +18,7 @@ import { GenerationConfigValidator } from "./helpers/generation-config-validator
 import { AutoModelSwitchingHelper } from "./helpers/auto-model-switching";
 import { NativeToolsManager } from "./helpers/native-tools-manager";
 import { CitationsProcessor } from "./helpers/citations-processor";
+import { encodeSignatureInToolCallId, extractSignatureFromToolCallId } from "./helpers/thought-signature";
 import { GeminiUrlContextMetadata, GroundingMetadata, NativeToolsRequestParams } from "./types/native-tools";
 
 // Gemini API response types
@@ -43,6 +44,7 @@ interface GeminiResponse {
 export interface GeminiPart {
 	text?: string;
 	thought?: boolean; // For real thinking chunks from Gemini
+	thoughtSignature?: string; // Signature required for Gemini 3 models with thinking enabled (camelCase per Gemini API)
 	functionCall?: {
 		name: string;
 		args: object;
@@ -216,12 +218,19 @@ export class GeminiApiClient {
 			// Add function calls
 			for (const toolCall of msg.tool_calls) {
 				if (toolCall.type === "function") {
-					parts.push({
+					const functionCallPart: GeminiPart = {
 						functionCall: {
 							name: toolCall.function.name,
 							args: JSON.parse(toolCall.function.arguments)
 						}
-					});
+					};
+
+					const signature = extractSignatureFromToolCallId(toolCall.id) || toolCall.thought_signature;
+					if (signature) {
+						functionCallPart.thoughtSignature = signature;
+					}
+
+					parts.push(functionCallPart);
 				}
 			}
 
@@ -361,6 +370,8 @@ export class GeminiApiClient {
 		await this.authManager.initializeAuth();
 		const projectId = await this.discoverProjectId();
 
+		const hasTools = Array.isArray(options?.tools) && options.tools.length > 0;
+
 		const contents = messages.map((msg) => this.messageToGeminiFormat(msg));
 
 		if (systemPrompt) {
@@ -388,14 +399,6 @@ export class GeminiApiClient {
 			response_format: options?.response_format
 		};
 
-		// Use the validation helper to create a proper generation config
-		const generationConfig = GenerationConfigValidator.createValidatedConfig(
-			modelId,
-			req,
-			isRealThinkingEnabled,
-			includeReasoning
-		);
-
 		// Native tools integration
 		const nativeToolsManager = new NativeToolsManager(this.env);
 		const nativeToolsParams = this.extractNativeToolsParams(options as Record<string, unknown>);
@@ -405,6 +408,14 @@ export class GeminiApiClient {
 		const { tools, toolConfig: finalToolConfig } = GenerationConfigValidator.createFinalToolConfiguration(
 			toolConfig,
 			options
+		);
+
+		const generationConfig = GenerationConfigValidator.createValidatedConfig(
+			modelId,
+			req,
+			isRealThinkingEnabled,
+			includeReasoning,
+			hasTools
 		);
 
 		// For thinking models with fake thinking (fallback when real thinking is not enabled or not requested)
@@ -557,69 +568,81 @@ export class GeminiApiClient {
 		nativeToolsManager?: NativeToolsManager
 	): AsyncGenerator<StreamChunk> {
 		const citationsProcessor = new CitationsProcessor(this.env);
-		const response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${this.authManager.getAccessToken()}`
-			},
-			body: JSON.stringify(streamRequest)
-		});
+		const retryDelays = [500, 1000, 2000, 3000]; 
+		let currentModel = originalModel;
+		let currentRequest = streamRequest;
+		let response: Response;
 
-		if (!response.ok) {
-			if (response.status === 401 && !isRetry) {
-				console.log("Got 401 error in stream request, clearing token cache and retrying...");
-				await this.authManager.clearTokenCache();
-				await this.authManager.initializeAuth();
-				yield* this.performStreamRequest(
-					streamRequest,
-					needsThinkingClose,
-					true,
-					realThinkingAsContent,
-					originalModel,
-					nativeToolsManager
-				); // Retry once
-				return;
+		while (true) {
+			for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
+				response = await fetch(`${CODE_ASSIST_ENDPOINT}/${CODE_ASSIST_API_VERSION}:streamGenerateContent?alt=sse`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${this.authManager.getAccessToken()}`
+					},
+					body: JSON.stringify(currentRequest)
+				});
+
+				if (response.ok) {
+					break;
+				}
+
+				// Handle 401 - clear cache and retry once
+				if (response.status === 401 && !isRetry) {
+					console.log("Got 401 error in stream request, clearing token cache and retrying...");
+					await this.authManager.clearTokenCache();
+					await this.authManager.initializeAuth();
+					isRetry = true;
+					continue;
+				}
+
+				if (this.autoSwitchHelper.isRateLimitStatus(response.status)) {
+					if (attempt < retryDelays.length) {
+						const delay = retryDelays[attempt];
+						console.log(`Got ${response.status} for ${currentModel}, retrying in ${delay}ms (attempt ${attempt + 1}/${retryDelays.length})`);
+						await new Promise(resolve => setTimeout(resolve, delay));
+						continue;
+					}
+					break;
+				}
+
+				const errorText = await response.text();
+				console.error(`[GeminiAPI] Stream request failed: ${response.status}`, errorText);
+				throw new Error(`Stream request failed: ${response.status}`);
 			}
 
-			// Handle rate limiting with auto model switching
-			if (this.autoSwitchHelper.isRateLimitStatus(response.status) && !isRetry && originalModel) {
-				const fallbackModel = this.autoSwitchHelper.getFallbackModel(originalModel);
+			if (response!.ok) {
+				break;
+			}
+
+			if (this.autoSwitchHelper.isRateLimitStatus(response!.status) && currentModel) {
+				const fallbackModel = this.autoSwitchHelper.getFallbackModel(currentModel);
 				if (fallbackModel && this.autoSwitchHelper.isEnabled()) {
-					console.log(
-						`Got ${response.status} error for model ${originalModel}, switching to fallback model: ${fallbackModel}`
-					);
+					console.log(`Switching from ${currentModel} to fallback: ${fallbackModel}`);
 
-					// Create new request with fallback model
-					const fallbackRequest = {
-						...(streamRequest as Record<string, unknown>),
-						model: fallbackModel
-					};
-
-					// Add a notification chunk about the model switch
+					// Notify about model switch
 					yield {
 						type: "text",
-						data: this.autoSwitchHelper.createSwitchNotification(originalModel, fallbackModel)
+						data: this.autoSwitchHelper.createSwitchNotification(currentModel, fallbackModel)
 					};
 
-					yield* this.performStreamRequest(
-						fallbackRequest,
-						needsThinkingClose,
-						true,
-						realThinkingAsContent,
-						originalModel,
-						nativeToolsManager
-					);
-					return;
+					currentRequest = {
+						...(currentRequest as Record<string, unknown>),
+						model: fallbackModel
+					};
+					currentModel = fallbackModel;
+					// Try again with fallback model
+					continue;
 				}
 			}
 
-			const errorText = await response.text();
-			console.error(`[GeminiAPI] Stream request failed: ${response.status}`, errorText);
-			throw new Error(`Stream request failed: ${response.status}`);
+			const errorText = await response!.text();
+			console.error(`[GeminiAPI] Stream request failed: ${response!.status}`, errorText);
+			throw new Error(`Stream request failed: ${response!.status}`);
 		}
 
-		if (!response.body) {
+		if (!response!.body) {
 			throw new Error("Response has no body");
 		}
 
@@ -742,6 +765,10 @@ export class GeminiApiClient {
 							args: part.functionCall.args
 						};
 
+						if (part.thoughtSignature) {
+							functionCallData.thought_signature = part.thoughtSignature;
+						}
+
 						yield {
 							type: "tool_code",
 							data: functionCallData
@@ -806,14 +833,15 @@ export class GeminiApiClient {
 					usage = chunk.data as UsageData;
 				} else if (chunk.type === "tool_code" && typeof chunk.data === "object") {
 					const toolData = chunk.data as GeminiFunctionCall;
-					tool_calls.push({
-						id: `call_${crypto.randomUUID()}`,
+					const toolCall: { id: string; type: "function"; function: { name: string; arguments: string } } = {
+						id: encodeSignatureInToolCallId(toolData.thought_signature),
 						type: "function",
 						function: {
 							name: toolData.name,
 							arguments: JSON.stringify(toolData.args)
 						}
-					});
+					};
+					tool_calls.push(toolCall);
 				}
 				// Skip reasoning chunks for non-streaming responses
 			}
