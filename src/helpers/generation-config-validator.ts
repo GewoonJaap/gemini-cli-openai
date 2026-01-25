@@ -198,7 +198,7 @@ export class GenerationConfigValidator {
 
 			if (this.isValidEffortLevel(reasoning_effort)) {
 				const budget = this.mapEffortToThinkingBudget(reasoning_effort, modelId);
-				generationConfig.thinkingConfig = this.createThinkingConfig(budget);
+				generationConfig.thinkingConfig = this.createThinkingConfig(budget, reasoning_effort !== "none");
 				if (reasoning_effort === "none") {
 					console.log(`[GenerationConfig] Gemini 3 thinking disabled for '${modelId}' with budget: 0`);
 				}
