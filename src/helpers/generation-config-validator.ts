@@ -205,7 +205,9 @@ export class GenerationConfigValidator {
 			}
 			// If no reasoning_effort specified, don't include thinkingConfig (use default)
 
-			Object.keys(generationConfig).forEach((key) => generationConfig[key] === undefined && delete generationConfig[key]);
+			Object.keys(generationConfig).forEach(
+				(key) => generationConfig[key] === undefined && delete generationConfig[key]
+			);
 			return generationConfig;
 		}
 		// Gemini 2.5 models use thinkingBudget

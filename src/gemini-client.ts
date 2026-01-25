@@ -568,7 +568,7 @@ export class GeminiApiClient {
 		nativeToolsManager?: NativeToolsManager
 	): AsyncGenerator<StreamChunk> {
 		const citationsProcessor = new CitationsProcessor(this.env);
-		const retryDelays = [500, 1000, 2000, 3000]; 
+		const retryDelays = [500, 1000, 2000, 3000];
 		let currentModel = originalModel;
 		let currentRequest = streamRequest;
 		let response: Response;
@@ -600,8 +600,10 @@ export class GeminiApiClient {
 				if (this.autoSwitchHelper.isRateLimitStatus(response.status)) {
 					if (attempt < retryDelays.length) {
 						const delay = retryDelays[attempt];
-						console.log(`Got ${response.status} for ${currentModel}, retrying in ${delay}ms (attempt ${attempt + 1}/${retryDelays.length})`);
-						await new Promise(resolve => setTimeout(resolve, delay));
+						console.log(
+							`Got ${response.status} for ${currentModel}, retrying in ${delay}ms (attempt ${attempt + 1}/${retryDelays.length})`
+						);
+						await new Promise((resolve) => setTimeout(resolve, delay));
 						continue;
 					}
 					break;
