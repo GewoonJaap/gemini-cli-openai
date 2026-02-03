@@ -370,8 +370,6 @@ export class GeminiApiClient {
 		await this.authManager.initializeAuth();
 		const projectId = await this.discoverProjectId();
 
-		const hasTools = Array.isArray(options?.tools) && options.tools.length > 0;
-
 		const contents = messages.map((msg) => this.messageToGeminiFormat(msg));
 
 		if (systemPrompt) {
@@ -414,8 +412,7 @@ export class GeminiApiClient {
 			modelId,
 			req,
 			isRealThinkingEnabled,
-			includeReasoning,
-			hasTools
+			includeReasoning
 		);
 
 		// For thinking models with fake thinking (fallback when real thinking is not enabled or not requested)
@@ -651,7 +648,7 @@ export class GeminiApiClient {
 		let hasClosedThinking = false;
 		let hasStartedThinking = false;
 
-		for await (const jsonData of this.parseSSEStream(response.body)) {
+		for await (const jsonData of this.parseSSEStream(response!.body)) {
 			const candidate = jsonData.response?.candidates?.[0];
 
 			if (candidate?.content?.parts) {

@@ -170,8 +170,7 @@ export class GenerationConfigValidator {
 		modelId: string,
 		options: Partial<ChatCompletionRequest> = {},
 		isRealThinkingEnabled: boolean,
-		includeReasoning: boolean,
-		hasTools: boolean = false
+		includeReasoning: boolean
 	): Record<string, unknown> {
 		const generationConfig: Record<string, unknown> = {
 			temperature: options.temperature ?? DEFAULT_TEMPERATURE,
