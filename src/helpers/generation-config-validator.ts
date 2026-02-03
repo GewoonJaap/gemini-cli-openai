@@ -3,9 +3,10 @@ import {
 	DEFAULT_THINKING_BUDGET,
 	DEFAULT_TEMPERATURE,
 	REASONING_EFFORT_BUDGETS,
-	GEMINI_SAFETY_CATEGORIES
+	GEMINI_SAFETY_CATEGORIES,
+	GEMINI3_EFFORT_TO_THINKING_LEVEL
 } from "../constants";
-import { ChatCompletionRequest, Env, EffortLevel, SafetyThreshold } from "../types";
+import { ChatCompletionRequest, Env, EffortLevel, ThinkingLevel, SafetyThreshold } from "../types";
 import { NativeToolsConfiguration } from "../types/native-tools";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -39,6 +40,32 @@ export class GenerationConfigValidator {
 	}
 
 	/**
+	 * Maps reasoning effort to a Gemini 3 thinkingLevel based on model type.
+	 *
+	 * Gemini 3 uses thinkingLevel instead of thinkingBudget. The two parameters
+	 * cannot be combined in the same request (returns 400).
+	 *
+	 * Supported levels per model:
+	 *   - Gemini 3 Pro:   "low", "high" (default: "high")
+	 *   - Gemini 3 Flash: "minimal", "low", "medium", "high" (default: "high")
+	 *
+	 * Note: Thinking cannot be fully disabled on Gemini 3. "minimal" (Flash only)
+	 * is the closest equivalent — the model may still think for complex tasks.
+	 *
+	 * Ref: https://ai.google.dev/gemini-api/docs/thinking
+	 * Ref: https://ai.google.dev/gemini-api/docs/gemini-3
+	 *
+	 * @param effort - The reasoning effort level
+	 * @param modelId - The model ID to determine Pro vs Flash
+	 * @returns The corresponding thinkingLevel
+	 */
+	static mapEffortToThinkingLevel(effort: EffortLevel, modelId: string): ThinkingLevel {
+		const isFlashModel = modelId.includes("flash");
+		const mapping = GEMINI3_EFFORT_TO_THINKING_LEVEL[effort];
+		return isFlashModel ? mapping.flash : mapping.pro;
+	}
+
+	/**
 	 * Type guard to check if a value is a valid EffortLevel.
 	 * @param value - The value to check
 	 * @returns True if the value is a valid EffortLevel
@@ -48,16 +75,34 @@ export class GenerationConfigValidator {
 	}
 
 	/**
-	 * Creates a thinkingConfig object for Gemini models.
+	 * Creates a thinkingConfig object for Gemini 2.5 models (uses thinkingBudget).
 	 * @param budget - The thinking budget (0 = disabled, -1 = dynamic, positive = token limit)
 	 * @param includeThoughts - Whether to include thinking content in the response
-	 * @returns ThinkingConfig object
+	 * @returns ThinkingConfig object with thinkingBudget
 	 */
 	private static createThinkingConfig(
 		budget: number,
 		includeThoughts: boolean = false
 	): { thinkingBudget: number; includeThoughts: boolean } {
 		return { thinkingBudget: budget, includeThoughts };
+	}
+
+	/**
+	 * Creates a thinkingConfig object for Gemini 3 models (uses thinkingLevel).
+	 *
+	 * Gemini 3 models use thinkingLevel instead of thinkingBudget.
+	 * Using thinkingBudget with Gemini 3 is not supported and may cause errors.
+	 * Ref: https://ai.google.dev/gemini-api/docs/thinking
+	 *
+	 * @param level - The thinking level ("minimal", "low", "medium", "high")
+	 * @param includeThoughts - Whether to include thinking content in the response
+	 * @returns ThinkingConfig object with thinkingLevel
+	 */
+	private static createGemini3ThinkingConfig(
+		level: ThinkingLevel,
+		includeThoughts: boolean = false
+	): { thinkingLevel: ThinkingLevel; includeThoughts: boolean } {
+		return { thinkingLevel: level, includeThoughts };
 	}
 
 	/**
@@ -190,19 +235,21 @@ export class GenerationConfigValidator {
 		const isThinkingModel = modelInfo?.thinking || false;
 		const isGemini3Model = modelId.includes("gemini-3");
 
-		// Gemini 3 models - use thinkingBudget (works in AI Studio)
+		// Gemini 3 models — use thinkingLevel (NOT thinkingBudget).
+		// thinkingBudget is only for Gemini 2.5 models. Combining both returns 400.
+		// Thinking cannot be fully disabled on Gemini 3; "minimal" (Flash only) is the closest.
+		// Ref: https://ai.google.dev/gemini-api/docs/thinking
+		// Ref: https://ai.google.dev/gemini-api/docs/gemini-3
 		if (isGemini3Model) {
 			const reasoning_effort =
 				options.reasoning_effort || options.extra_body?.reasoning_effort || options.model_params?.reasoning_effort;
 
 			if (this.isValidEffortLevel(reasoning_effort)) {
-				const budget = this.mapEffortToThinkingBudget(reasoning_effort, modelId);
-				generationConfig.thinkingConfig = this.createThinkingConfig(budget, reasoning_effort !== "none");
-				if (reasoning_effort === "none") {
-					console.log(`[GenerationConfig] Gemini 3 thinking disabled for '${modelId}' with budget: 0`);
-				}
+				const level = this.mapEffortToThinkingLevel(reasoning_effort, modelId);
+				generationConfig.thinkingConfig = this.createGemini3ThinkingConfig(level, reasoning_effort !== "none");
+				console.log(`[GenerationConfig] Gemini 3 thinkingLevel set to '${level}' for '${modelId}'`);
 			}
-			// If no reasoning_effort specified, don't include thinkingConfig (use default)
+			// If no reasoning_effort specified, don't include thinkingConfig (use model default: "high")
 
 			Object.keys(generationConfig).forEach(
 				(key) => generationConfig[key] === undefined && delete generationConfig[key]

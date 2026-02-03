@@ -50,6 +50,18 @@ export const REASONING_EFFORT_BUDGETS = {
 	}
 } as const;
 
+// Gemini 3 reasoning effort → thinkingLevel mapping
+// Gemini 3 uses thinkingLevel instead of thinkingBudget.
+// Pro only supports: "low", "high"
+// Flash supports: "minimal", "low", "medium", "high"
+// See: https://ai.google.dev/gemini-api/docs/thinking
+export const GEMINI3_EFFORT_TO_THINKING_LEVEL = {
+	none: { pro: "low", flash: "minimal" },
+	low: { pro: "low", flash: "low" },
+	medium: { pro: "low", flash: "medium" },
+	high: { pro: "high", flash: "high" }
+} as const;
+
 // Gemini safety categories
 export const GEMINI_SAFETY_CATEGORIES = {
 	HARASSMENT: "HARM_CATEGORY_HARASSMENT",
