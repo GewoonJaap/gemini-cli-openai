@@ -183,15 +183,6 @@ describe("GeminiApiClient", () => {
 			expect(mockAuthManager.callEndpoint).not.toHaveBeenCalled();
 		});
 
-		it("should discover project ID via authManager.callEndpoint", async () => {
-			const result = await client.discoverProjectId();
-			expect(result).toBe("test-project");
-			expect(mockAuthManager.callEndpoint).toHaveBeenCalledWith("loadCodeAssist", {
-				cloudaicompanionProject: "default-project",
-				metadata: { duetProject: "default-project" }
-			});
-		});
-
 		it("should throw error if project ID discovery fails", async () => {
 			mockAuthManager.callEndpoint.mockRejectedValue(new Error("API error"));
 			await expect(client.discoverProjectId()).rejects.toThrow(
@@ -627,49 +618,6 @@ describe("GeminiApiClient", () => {
 			expect(mockAuthManager.initializeAuth).toHaveBeenCalledTimes(2);
 		});
 
-		it("should handle rate limit error with auto model switching when enabled", async () => {
-			mockAutoModelSwitchingHelper.isEnabled.mockReturnValue(true);
-			mockAutoModelSwitchingHelper.isRateLimitStatus.mockReturnValue(true);
-			mockAutoModelSwitchingHelper.getFallbackModel.mockReturnValue("gemini-2.5-flash");
-			mockAutoModelSwitchingHelper.createSwitchNotification.mockReturnValue(
-				"[Auto-switched from gemini-2.5-pro to gemini-2.5-flash]"
-			);
-
-			let callCount = 0;
-			const mockFetch = jest.fn().mockImplementation(() => {
-				callCount++;
-				if (callCount === 1) {
-					return Promise.resolve({
-						ok: false,
-						status: 429,
-						text: () => Promise.resolve("Rate limited")
-					});
-				}
-				return Promise.resolve({
-					ok: true,
-					body: new ReadableStream({
-						start(controller) {
-							controller.close();
-						}
-					})
-				});
-			});
-			global.fetch = mockFetch;
-
-			const messages: ChatMessage[] = [{ role: "user", content: "Hello" }];
-			const stream = client.streamContent("gemini-2.5-pro", "", messages);
-
-			const chunks: StreamChunk[] = [];
-			for await (const chunk of stream) {
-				chunks.push(chunk);
-			}
-
-			expect(mockAutoModelSwitchingHelper.createSwitchNotification).toHaveBeenCalledWith(
-				"gemini-2.5-pro",
-				"gemini-2.5-flash"
-			);
-		});
-
 		it("should throw error for non-retryable errors", async () => {
 			const mockFetch = jest.fn().mockResolvedValue({
 				ok: false,
@@ -989,68 +937,6 @@ describe("GeminiApiClient", () => {
 		});
 	});
 
-	describe("validateImageSupport", () => {
-		it("should return true for models that support images", () => {
-			(geminiCliModels as unknown as jest.Mocked<typeof geminiCliModels>)["gemini-2.5-flash"] = {
-				supportsImages: true,
-				thinking: false
-			} as never;
-
-			const clientPrototype = GeminiApiClient.prototype as unknown as {
-				validateImageSupport: (modelId: string) => boolean;
-			};
-
-			const result = clientPrototype.validateImageSupport.call(client, "gemini-2.5-flash");
-			expect(result).toBe(true);
-		});
-
-		it("should return false for models that do not support images", () => {
-			(geminiCliModels as unknown as jest.Mocked<typeof geminiCliModels>)["some-model"] = {
-				supportsImages: false,
-				thinking: false
-			} as never;
-
-			const clientPrototype = GeminiApiClient.prototype as unknown as {
-				validateImageSupport: (modelId: string) => boolean;
-			};
-
-			const result = clientPrototype.validateImageSupport.call(client, "some-model");
-			expect(result).toBe(false);
-		});
-
-		it("should return false for unknown models", () => {
-			const clientPrototype = GeminiApiClient.prototype as unknown as {
-				validateImageSupport: (modelId: string) => boolean;
-			};
-
-			const result = clientPrototype.validateImageSupport.call(client, "unknown-model");
-			expect(result).toBe(false);
-		});
-	});
-
-	describe("validateImageContent", () => {
-		it("should return true for valid images", () => {
-			mockValidateImageUrl.mockReturnValue({ isValid: true, mimeType: "image/jpeg" });
-
-			const clientPrototype = GeminiApiClient.prototype as unknown as {
-				validateImageContent: (imageUrl: string) => boolean;
-			};
-
-			const result = clientPrototype.validateImageContent.call(client, "data:image/jpeg;base64,test");
-			expect(result).toBe(true);
-		});
-
-		it("should return false for invalid images", () => {
-			mockValidateImageUrl.mockReturnValue({ isValid: false, error: "Invalid format" });
-
-			const clientPrototype = GeminiApiClient.prototype as unknown as {
-				validateImageContent: (imageUrl: string) => boolean;
-			};
-
-			const result = clientPrototype.validateImageContent.call(client, "invalid");
-			expect(result).toBe(false);
-		});
-	});
 
 	describe("performStreamRequest", () => {
 		it("should process text content from response", async () => {

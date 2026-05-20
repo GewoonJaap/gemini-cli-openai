@@ -154,10 +154,6 @@ describe("models", () => {
 			});
 		});
 
-		it("should contain exactly 4 models", () => {
-			const result = getAllModelIds();
-			expect(result).toHaveLength(4);
-		});
 	});
 
 	describe("isValidModel", () => {

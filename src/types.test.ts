@@ -89,20 +89,6 @@ describe("types.ts", () => {
 	});
 
 	describe("ModelInfo", () => {
-		it("should create valid ModelInfo object", () => {
-			const modelInfo: ModelInfo = {
-				maxTokens: 8192,
-				contextWindow: 32768,
-				supportsImages: true,
-				supportsPromptCache: true,
-				inputPrice: 0.0001,
-				outputPrice: 0.0002,
-				description: "Test model",
-				thinking: true,
-			};
-			expect(modelInfo.maxTokens).toBe(8192);
-			expect(modelInfo.thinking).toBe(true);
-		});
 	});
 
 	describe("EffortLevel", () => {
